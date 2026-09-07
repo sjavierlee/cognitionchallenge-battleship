@@ -1,4 +1,10 @@
-import { coordKey, inBounds, orthogonalNeighbors, shipCells, surroundingCells } from '../engine/coords';
+import {
+  coordKey,
+  inBounds,
+  orthogonalNeighbors,
+  shipCells,
+  surroundingCells,
+} from '../engine/coords';
 import { defaultRng, pick, type Rng } from '../engine/rng';
 import { FLEET } from '../engine/ships';
 import {
@@ -150,9 +156,7 @@ function huntHard(state: AiState, rng: Rng): Coord {
 function lineExtensions(state: AiState, cluster: Coord[]): Coord[] {
   const rows = new Set(cluster.map((c) => c.row));
   const horizontal = rows.size === 1;
-  const sorted = [...cluster].sort((a, b) =>
-    horizontal ? a.col - b.col : a.row - b.row,
-  );
+  const sorted = [...cluster].sort((a, b) => (horizontal ? a.col - b.col : a.row - b.row));
   const first = sorted[0];
   const last = sorted[sorted.length - 1];
   const ends = horizontal

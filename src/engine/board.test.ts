@@ -126,9 +126,7 @@ describe('randomizeFleet', () => {
   it('keeps already-placed ships and fills in the rest', () => {
     const partial = placeShip(createBoard(), carrier, { row: 0, col: 0 }, 'horizontal');
     const full = randomizeFleet(partial, seededRng(7));
-    expect(full.ships.find((s) => s.kind === 'carrier')?.cells).toEqual(
-      partial.ships[0].cells,
-    );
+    expect(full.ships.find((s) => s.kind === 'carrier')?.cells).toEqual(partial.ships[0].cells);
     expect(isFleetComplete(full)).toBe(true);
   });
 });
