@@ -3,6 +3,7 @@ import { DIFFICULTIES } from '../ai/huntTarget';
 import { playSound } from '../audio/sounds';
 import { canPlace } from '../engine/board';
 import { inBounds, shipCells } from '../engine/coords';
+import { defaultRng, type Rng } from '../engine/rng';
 import { shipSpec } from '../engine/ships';
 import type { Coord } from '../engine/types';
 import {
@@ -14,7 +15,7 @@ import {
   saveSoundEnabled,
   type GameRecord,
 } from '../storage/record';
-import { appReducer, initialAppState } from './appState';
+import { appReducer, initialAppState, type AppAction, type AppState } from './appState';
 import { Board, type LastShot, type Preview } from './Board';
 import { DifficultyPicker } from './DifficultyPicker';
 import { GameOver } from './GameOver';
@@ -23,8 +24,15 @@ import { ShotLog } from './ShotLog';
 
 const AI_DELAY_MS = 700;
 
-export function App() {
-  const [state, dispatch] = useReducer(appReducer, undefined, () => initialAppState());
+type Props = {
+  /** Random source for fleet placement and AI shots; injectable for deterministic tests. */
+  rng?: Rng;
+  aiDelayMs?: number;
+};
+
+export function App({ rng = defaultRng, aiDelayMs = AI_DELAY_MS }: Props = {}) {
+  const reducer = useCallback((s: AppState, a: AppAction) => appReducer(s, a, rng), [rng]);
+  const [state, dispatch] = useReducer(reducer, undefined, () => initialAppState());
   const [hover, setHover] = useState<Coord | null>(null);
   const [record, setRecord] = useState<GameRecord>(() => loadRecord());
   const [soundOn, setSoundOn] = useState<boolean>(() => loadSoundEnabled());
@@ -40,9 +48,9 @@ export function App() {
   // AI takes its turn after a short pause so the player can read the result.
   useEffect(() => {
     if (!aiTurn) return;
-    const id = window.setTimeout(() => dispatch({ type: 'ai-fire' }), AI_DELAY_MS);
+    const id = window.setTimeout(() => dispatch({ type: 'ai-fire' }), aiDelayMs);
     return () => window.clearTimeout(id);
-  }, [aiTurn, shotSeq]);
+  }, [aiTurn, shotSeq, aiDelayMs]);
 
   // Keyboard: R rotates during placement.
   useEffect(() => {
