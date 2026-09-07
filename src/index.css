@@ -575,6 +575,7 @@ kbd {
   margin: 0;
   padding: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -584,8 +585,9 @@ kbd {
 
 .shot-log-item {
   display: grid;
-  grid-template-columns: 2.6em 2.6em 2.6em 1fr;
-  gap: 0.4rem;
+  grid-template-columns: 2.4em 2.4em 2.4em minmax(0, 1fr);
+  gap: 0.35rem;
+  align-items: baseline;
   padding: 0.3rem 0.5rem;
   border-radius: 6px;
   background: var(--panel-2);
@@ -610,6 +612,9 @@ kbd {
 
 .shot-log-outcome {
   text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
 }
 
 .shot-log-item--hit .shot-log-outcome {
