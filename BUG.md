@@ -214,10 +214,12 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   the displayed totals refresh when another tab writes. Test simulates the
   other-tab write before commit.
 
-### Not covered by the run
+### Coverage notes
 
-- The Victory overlay and win-count increment were not exercised in the browser
-  (the recorded game ended in Defeat). They are covered by the reducer/engine
-  tests (`game.test.ts` "player wins", `App.test.tsx`), and the code path is
-  the same `game-over` effect as Defeat with `winner === 'player'`.
+- The first recorded run ended in Defeat, so the Victory overlay was only
+  covered by unit tests. A follow-up recorded run played Easy to a win (55
+  shots, 31% accuracy) and confirmed the Victory overlay, per-difficulty and
+  overall record increment, Play Again, and persistence across reload. A
+  deterministic RTL test (`App.test.tsx`, seeded rng + `aiDelayMs={0}`) now
+  also drives a full win.
 - Audible sound output was not assessed, only the toggle's persistence.
