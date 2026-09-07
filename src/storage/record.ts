@@ -6,6 +6,9 @@ export type GameRecord = Tally & { perDifficulty: Record<Difficulty, Tally> };
 
 export const RECORD_KEY = 'battleship.record';
 export const SOUND_KEY = 'battleship.sound';
+export const THEME_KEY = 'battleship.theme';
+
+export type ThemePreference = 'light' | 'dark' | 'system';
 
 export function emptyRecord(): GameRecord {
   return {
@@ -105,4 +108,13 @@ export function loadSoundEnabled(): boolean {
 
 export function saveSoundEnabled(on: boolean): void {
   write(SOUND_KEY, on ? 'on' : 'off');
+}
+
+export function loadThemePreference(): ThemePreference {
+  const raw = read(THEME_KEY);
+  return raw === 'light' || raw === 'dark' ? raw : 'system';
+}
+
+export function saveThemePreference(pref: ThemePreference): void {
+  write(THEME_KEY, pref === 'system' ? null : pref);
 }

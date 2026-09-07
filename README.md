@@ -16,7 +16,12 @@ randomly.
 4. **Win** by sinking all five enemy ships before the AI sinks yours. Your
    win/loss record (overall and per difficulty) is saved in `localStorage`.
 
-Sound effects are off by default; toggle them from the header.
+Sound effects are off by default; toggle them from the header. The theme
+follows your system light/dark preference until you flip the header toggle,
+which is then remembered.
+
+Your ships are drawn as top-down silhouettes on your grid and in the tray;
+enemy ships stay hidden until you sink them.
 
 ## AI
 
@@ -49,7 +54,7 @@ src/
   engine/   pure game rules (board, placement, shots, turn state)
   ai/       hunt/target AI with Easy/Normal/Hard strategies + simulator
   ui/       React components and the app reducer
-  storage/  localStorage record + settings
+  storage/  localStorage record + settings (sound, theme)
   audio/    Web Audio synthesized sound effects
 ```
 

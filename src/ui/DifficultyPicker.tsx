@@ -8,9 +8,9 @@ type Props = {
 
 export function DifficultyPicker({ value, onChange, disabled = false }: Props) {
   return (
-    <fieldset className="difficulty" disabled={disabled}>
-      <legend className="difficulty-legend">AI difficulty</legend>
-      <div className="difficulty-options">
+    <fieldset className="panel difficulty" disabled={disabled}>
+      <legend className="panel-title">Opponent</legend>
+      <div className="difficulty-options" role="radiogroup" aria-label="AI difficulty">
         {DIFFICULTIES.map((d) => (
           <label
             key={d.id}
@@ -23,6 +23,7 @@ export function DifficultyPicker({ value, onChange, disabled = false }: Props) {
               checked={value === d.id}
               onChange={() => onChange(d.id)}
             />
+            <span className="difficulty-radio" aria-hidden="true" />
             <span className="difficulty-label">{d.label}</span>
             <span className="difficulty-blurb">{d.blurb}</span>
           </label>

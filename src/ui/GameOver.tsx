@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { DIFFICULTIES, type Difficulty } from '../ai/huntTarget';
 import type { GameState } from '../engine/types';
 import type { GameRecord } from '../storage/record';
@@ -21,15 +22,22 @@ export function GameOver({ game, difficulty, record, onPlayAgain }: Props) {
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
       <div className={`gameover gameover--${won ? 'win' : 'lose'}`}>
-        <h2 id="gameover-title" className="gameover-title">
+        <p className="gameover-kicker stagger" style={{ '--i': 0 } as CSSProperties}>
+          {won ? 'Enemy fleet destroyed' : 'Fleet lost'} · {label} AI
+        </p>
+        <h2
+          id="gameover-title"
+          className="gameover-title stagger"
+          style={{ '--i': 1 } as CSSProperties}
+        >
           {won ? 'Victory!' : 'Defeat'}
         </h2>
-        <p className="gameover-sub">
+        <p className="gameover-sub stagger" style={{ '--i': 2 } as CSSProperties}>
           {won
             ? `You sank the entire enemy fleet in ${mine.length} shots.`
             : `The ${label} AI sank your fleet in ${theirs.length} shots.`}
         </p>
-        <dl className="gameover-stats">
+        <dl className="gameover-stats stagger" style={{ '--i': 3 } as CSSProperties}>
           <div>
             <dt>Your shots</dt>
             <dd>{mine.length}</dd>
@@ -51,9 +59,16 @@ export function GameOver({ game, difficulty, record, onPlayAgain }: Props) {
             </dd>
           </div>
         </dl>
-        <button type="button" className="btn btn--primary" onClick={onPlayAgain} autoFocus>
-          Play again
-        </button>
+        <div className="stagger" style={{ '--i': 4 } as CSSProperties}>
+          <button
+            type="button"
+            className="btn btn--primary btn--big"
+            onClick={onPlayAgain}
+            autoFocus
+          >
+            Play again
+          </button>
+        </div>
       </div>
     </div>
   );

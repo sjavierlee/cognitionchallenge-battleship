@@ -214,6 +214,40 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   the displayed totals refresh when another tab writes. Test simulates the
   other-tab write before commit.
 
+## Visual pass (nautical theme, ship art, light/dark)
+
+### 17. Placement ghost was half-hidden under the hovered cell — Fixed
+
+- **Description:** While hovering to place a ship, only the far half of the
+  ghost silhouette was visible; the cell under the cursor drew over it and its
+  valid/invalid tint was lost behind the generic hover colour.
+- **Root cause:** The footprint tint classes shared the shot markers'
+  `z-index: 2`, which stacks above the sprite overlay (`z-index: 1`), and the
+  later `.cell:hover` rule out-specified the tint background.
+- **Fix (`src/index.css`):** footprint tints stay at the cells' base z-index so
+  the ghost draws on top, and `.cell--preview-*:hover` selectors keep the
+  green/red tint over the hover colour.
+
+### 18. "Opponent" legend floated outside its panel — Fixed
+
+- **Description:** After restyling `DifficultyPicker` as a panel, its
+  `<legend>` rendered straddling the panel's top border with a gap beneath it.
+- **Root cause:** Browsers position a `<legend>` on the fieldset border by
+  default; the panel padding/border no longer matched that layout.
+- **Fix:** `legend { float: left; width: 100% }` plus `clear: both` on the
+  options keeps the semantic fieldset/legend while laying it out like the other
+  panel titles.
+
+### 19. Battle boards stacked vertically at laptop widths — Fixed
+
+- **Description:** At 1280px the two boards wrapped onto separate rows beside
+  the shot log, leaving most of the viewport empty.
+- **Root cause:** Cell size is viewport-derived (`--cell`); with the larger
+  placement-screen cells, two boards plus the 300px log exceeded the container.
+- **Fix:** `.layout--battle` sets a slightly smaller `--cell` clamp so both
+  boards fit side by side down to ~900px, and the sub-900px breakpoint restores
+  the larger mobile cells (boards stack there anyway).
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only

@@ -5,9 +5,12 @@ import {
   emptyRecord,
   loadRecord,
   loadSoundEnabled,
+  loadThemePreference,
   RECORD_KEY,
   saveRecord,
   saveSoundEnabled,
+  saveThemePreference,
+  THEME_KEY,
 } from './record';
 
 afterEach(() => {
@@ -92,5 +95,21 @@ describe('storage failures', () => {
     expect(() => saveSoundEnabled(true)).not.toThrow();
     expect(() => clearRecord()).not.toThrow();
     expect(commitResult('hard', true).wins).toBe(1);
+  });
+});
+
+describe('theme preference', () => {
+  it('defaults to system and only stores explicit choices', () => {
+    expect(loadThemePreference()).toBe('system');
+    saveThemePreference('dark');
+    expect(localStorage.getItem(THEME_KEY)).toBe('dark');
+    expect(loadThemePreference()).toBe('dark');
+    saveThemePreference('system');
+    expect(localStorage.getItem(THEME_KEY)).toBeNull();
+  });
+
+  it('ignores unknown stored values', () => {
+    localStorage.setItem(THEME_KEY, 'sepia');
+    expect(loadThemePreference()).toBe('system');
   });
 });
