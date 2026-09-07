@@ -12,14 +12,14 @@ A simple, shareable Battleship web game playable in the browser against an AI op
 
 ## Decisions (locked)
 
-| Topic | Decision |
-|---|---|
-| Stack | Vite + React 18 + TypeScript |
-| Placement | Click ship in tray → hover preview → click to place; `R` rotates |
-| AI | Easy / Normal / Hard selector |
-| Adjacency | Ships may **not** touch — at least one empty cell (incl. diagonals) between ships |
-| Deploy | Vercel / Netlify (config files included; repo connected by owner) |
-| Extras | Shot history log panel, win/loss record in `localStorage`, shot/hit animations + sound toggle (off by default) |
+| Topic     | Decision                                                                                                       |
+| --------- | -------------------------------------------------------------------------------------------------------------- |
+| Stack     | Vite + React 18 + TypeScript                                                                                   |
+| Placement | Click ship in tray → hover preview → click to place; `R` rotates                                               |
+| AI        | Easy / Normal / Hard selector                                                                                  |
+| Adjacency | Ships may **not** touch — at least one empty cell (incl. diagonals) between ships                              |
+| Deploy    | Vercel / Netlify (config files included; repo connected by owner)                                              |
+| Extras    | Shot history log panel, win/loss record in `localStorage`, shot/hit animations + sound toggle (off by default) |
 
 ## 2. Non-goals (v1)
 
@@ -29,14 +29,14 @@ A simple, shareable Battleship web game playable in the browser against an AI op
 
 ## 3. Tech Stack
 
-| Concern | Choice | Why |
-|---|---|---|
-| Language | TypeScript | Type safety for grid/ship/state logic; catches off-by-one and orientation bugs early |
-| UI | React 18 | Small component tree (two boards, controls, status); familiar, well-supported |
-| Build | Vite | Fast dev server, one-command static build, zero-config on Vercel/Netlify |
-| Styling | Plain CSS | Grid is easy with CSS Grid; keeps bundle small |
-| Tests | Vitest | Same toolchain as Vite; unit-test the pure game engine and AI |
-| Lint/format | ESLint + Prettier | Standard |
+| Concern     | Choice            | Why                                                                                  |
+| ----------- | ----------------- | ------------------------------------------------------------------------------------ |
+| Language    | TypeScript        | Type safety for grid/ship/state logic; catches off-by-one and orientation bugs early |
+| UI          | React 18          | Small component tree (two boards, controls, status); familiar, well-supported        |
+| Build       | Vite              | Fast dev server, one-command static build, zero-config on Vercel/Netlify             |
+| Styling     | Plain CSS         | Grid is easy with CSS Grid; keeps bundle small                                       |
+| Tests       | Vitest            | Same toolchain as Vite; unit-test the pure game engine and AI                        |
+| Lint/format | ESLint + Prettier | Standard                                                                             |
 
 ## 4. Architecture
 
@@ -73,7 +73,7 @@ tests/
 ### State model (engine)
 
 ```ts
-type Coord = { row: number; col: number };          // 0..9
+type Coord = { row: number; col: number }; // 0..9
 type Orientation = 'horizontal' | 'vertical';
 type ShipKind = 'carrier' | 'battleship' | 'cruiser' | 'submarine' | 'destroyer';
 type Ship = { kind: ShipKind; size: number; cells: Coord[]; hits: number };
@@ -87,7 +87,12 @@ type GameState = {
   winner?: 'player' | 'ai';
   log: ShotResult[];
 };
-type ShotResult = { by: 'player' | 'ai'; at: Coord; outcome: 'miss' | 'hit' | 'sunk'; sunk?: ShipKind };
+type ShotResult = {
+  by: 'player' | 'ai';
+  at: Coord;
+  outcome: 'miss' | 'hit' | 'sunk';
+  sunk?: ShipKind;
+};
 ```
 
 All engine functions are pure: `(state, action) => newState`. UI holds state via `useReducer`.
@@ -103,7 +108,7 @@ All engine functions are pure: `(state, action) => newState`. UI holds state via
    - Pick AI difficulty (Easy / Normal / Hard) before starting.
    - **Start Game** enabled once all 5 placed. AI fleet is randomized at start under the same no-touch rule.
 2. **Battle phase**
-   - Two boards side by side: *Your Fleet* (ships visible, incoming shots shown) and *Enemy Waters* (ships hidden, your shots shown).
+   - Two boards side by side: _Your Fleet_ (ships visible, incoming shots shown) and _Enemy Waters_ (ships hidden, your shots shown).
    - Player clicks a cell on Enemy Waters → engine resolves → status message → if game not over, AI takes its turn (short delay ~500ms for readability) → back to player.
    - Cannot fire at an already-targeted cell.
    - Sunk ships are revealed/highlighted on the enemy board.
@@ -115,17 +120,20 @@ All engine functions are pure: `(state, action) => newState`. UI holds state via
 The AI keeps its own view of the player's board: `unknown | miss | hit | sunk`, plus a **target queue**.
 
 ### Hunt mode (no active hits)
+
 - Fire at `unknown` cells using **parity**: because the smallest ship is 2 long, every ship covers at least one cell where `(row + col) % 2 === 0`. Restrict hunting to that checkerboard (halves the search space).
 - Prefer cells with higher **probability density**: for each unknown cell, count how many ways each remaining (unsunk) ship could legally overlap it given known misses/sunk cells. Pick the max (random tie-break). This is a big upgrade over pure random parity and still cheap on a 10x10 board.
 - Once all remaining ships are ≥3 long, parity can be widened (skip every 3rd cell), but the density map already handles this implicitly — parity is a fast filter, density is the ranking.
 
 ### Target mode (at least one hit that is not part of a sunk ship)
+
 - On first hit: push the 4 orthogonal neighbors (that are `unknown`) onto the target stack.
 - On second adjacent hit: infer orientation; drop perpendicular candidates and extend along the line in both directions until a miss/edge/sunk.
 - When a ship is reported sunk: mark those cells `sunk` and — because ships cannot touch — mark every cell in the surrounding ring as `miss` (impossible). Return to Hunt.
 - Because of the no-touch rule a contiguous line of hits always belongs to exactly one ship, which simplifies targeting: extend along the line until the ship is reported sunk.
 
 ### Difficulty levels
+
 - **Easy**: uniformly random hunt over unknown cells; on a hit, fires at random unknown neighbours (no orientation inference). Beatable by most players.
 - **Normal**: parity (checkerboard) hunt; target mode with orientation inference; excludes ring around sunk ships.
 - **Hard**: probability-density hunt (respects parity, misses, sunk rings, and remaining ship sizes); orientation-aware targeting that also ranks candidate cells by density. Typically finishes in ~40–50 shots.
