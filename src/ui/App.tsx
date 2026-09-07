@@ -7,10 +7,10 @@ import { shipSpec } from '../engine/ships';
 import type { Coord } from '../engine/types';
 import {
   clearRecord,
+  commitResult,
   loadRecord,
   loadSoundEnabled,
-  recordResult,
-  saveRecord,
+  RECORD_KEY,
   saveSoundEnabled,
   type GameRecord,
 } from '../storage/record';
@@ -72,12 +72,17 @@ export function App() {
   useEffect(() => {
     if (!over || recordedFor.current === gameId) return;
     recordedFor.current = gameId;
-    setRecord((prev) => {
-      const next = recordResult(prev, difficulty, game.winner === 'player');
-      saveRecord(next);
-      return next;
-    });
+    setRecord(commitResult(difficulty, game.winner === 'player'));
   }, [over, gameId, difficulty, game.winner]);
+
+  // Keep the displayed record in sync with games finished in other tabs.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === null || e.key === RECORD_KEY) setRecord(loadRecord());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   const toggleSound = useCallback(() => {
     setSoundOn((on) => {

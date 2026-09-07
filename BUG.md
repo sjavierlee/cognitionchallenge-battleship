@@ -150,6 +150,70 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
 - **Fix:** Added `.vite` (and `coverage`) to `.gitignore`, `.vite` to
   `eslint.config.js` `ignores`, and `.prettierignore`.
 
+## Review phase (Devin Review on PR #1)
+
+### 12. Hard AI could skip past the hit instead of firing adjacent — Fixed
+
+- **Description:** After a single unresolved hit, Hard mode's `targetHard`
+  occasionally fired two or more cells away from the hit when several cells
+  tied on placement density. That breaks the promised hunt → target contract
+  (Normal never did this).
+- **Root cause:** `targetHard` built its candidate set from _every_ unknown cell
+  in _every_ legal placement covering the hit cluster, then ranked by density.
+  Cells far along a possible carrier placement can have the same count as the
+  immediate neighbours, and `bestByDensity` breaks ties randomly.
+- **Fix (`src/ai/huntTarget.ts`):** shared `clusterCandidates()` — orthogonal
+  neighbours after one hit, line extensions after 2+ collinear hits — is now the
+  candidate set for both Normal and Hard; Hard only uses the density map to
+  rank _within_ that set. Test added: 200 seeds after one mid-board hit, every
+  shot at Manhattan distance 1.
+
+### 13. Picking up a ship from the tray lost its orientation — Fixed
+
+- **Description:** Randomize, then click a vertical ship in the tray: the
+  preview came back horizontal. Clicking the ship on the board behaved
+  correctly.
+- **Root cause:** Two code paths pick up a ship — `place-at` on an occupied
+  cell (which derived orientation from the ship's cells) and `pick-up` from the
+  tray (which didn't touch `orientation`, so the previous selection's value
+  leaked through).
+- **Fix (`src/ui/appState.ts`):** extracted `shipOrientation(ship)` and used it
+  in both paths. Reducer test added.
+
+### 14. Any `localStorage` failure could crash the app — Fixed
+
+- **Description:** In private mode / with storage blocked or full, `getItem` /
+  `setItem` can throw even though `window.localStorage` exists. `loadRecord`
+  (called during first render), `saveRecord` (game over) and the sound toggle
+  would have propagated the exception and blanked the app.
+- **Root cause:** Only the _acquisition_ of `window.localStorage` was wrapped in
+  `try/catch`; the individual operations were not.
+- **Fix (`src/storage/record.ts`):** every access goes through best-effort
+  `read()` / `write()` helpers that swallow storage errors. Test mocks
+  `Storage.prototype.*` to throw and asserts nothing propagates.
+
+### 15. Malformed saved record could crash the result screen — Fixed
+
+- **Description:** A hand-edited or older-schema `battleship.record` (e.g.
+  `perDifficulty.easy = null`, string counts) loaded without validation, and
+  `recordResult` then dereferenced `record.perDifficulty[difficulty].wins`.
+- **Root cause:** `loadRecord` shallow-merged `parsed.perDifficulty` over the
+  defaults, so any present-but-invalid key replaced the valid default.
+- **Fix:** `loadRecord` rebuilds a fresh `GameRecord` from validated
+  finite/non-negative integers per field and per difficulty; unknown or invalid
+  values fall back to 0. Table-driven test over six malformed payloads.
+
+### 16. Two tabs finishing games overwrote each other's record — Fixed
+
+- **Description:** Each tab incremented the record it loaded at startup and
+  wrote that back, so the last tab to finish erased results saved by the other.
+- **Root cause:** The game-over effect derived the new record from React state
+  (`setRecord(prev => ...)`) rather than from storage.
+- **Fix:** new `commitResult(difficulty, won)` re-reads the persisted record,
+  applies the result and saves; `App` also listens to the `storage` event so
+  the displayed totals refresh when another tab writes. Test simulates the
+  other-tab write before commit.
+
 ### Not covered by the run
 
 - The Victory overlay and win-count increment were not exercised in the browser

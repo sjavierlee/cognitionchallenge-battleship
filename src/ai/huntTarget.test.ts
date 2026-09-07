@@ -70,6 +70,16 @@ describe('targeting', () => {
     expect(chooseShot(ai, seededRng(1))).toEqual({ row: 5, col: 6 });
   });
 
+  it('hard: stays adjacent after one hit even when farther cells tie on density', () => {
+    // Open board, single hit in the middle: every cell within reach of a carrier
+    // shares similar density, but the follow-up must still be an immediate neighbour.
+    const ai = observe(createAi('hard'), { at: { row: 4, col: 4 }, outcome: 'hit' });
+    for (let i = 0; i < 200; i++) {
+      const shot = chooseShot(ai, seededRng(i));
+      expect(Math.abs(shot.row - 4) + Math.abs(shot.col - 4)).toBe(1);
+    }
+  });
+
   it('hard: never targets a cell no remaining ship could occupy', () => {
     // Only the destroyer (2) remains; a hit at (0,0) with (0,1) a miss forces (1,0).
     let ai = createAi('hard', [shipSpec('destroyer')]);

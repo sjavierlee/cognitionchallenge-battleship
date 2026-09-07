@@ -178,12 +178,16 @@ function targetEasy(state: AiState, rng: Rng): Coord {
   return candidates.length ? pick(rng, candidates) : huntEasy(state, rng);
 }
 
+/** Cells adjacent to the cluster that could extend it: line ends for 2+ hits, else neighbours. */
+function clusterCandidates(state: AiState, cluster: Coord[]): Coord[] {
+  return cluster.length >= 2
+    ? lineExtensions(state, cluster)
+    : orthogonalNeighbors(cluster[0]).filter((c) => knowledgeAt(state, c) === 'unknown');
+}
+
 function targetNormal(state: AiState, rng: Rng): Coord {
   const cluster = hitCluster(state, state.activeHits[0]);
-  const candidates =
-    cluster.length >= 2
-      ? lineExtensions(state, cluster)
-      : orthogonalNeighbors(cluster[0]).filter((c) => knowledgeAt(state, c) === 'unknown');
+  const candidates = clusterCandidates(state, cluster);
   if (candidates.length) return pick(rng, candidates);
   // Should not happen under the no-touch rule; fall back to any neighbour of any active hit.
   const fallback = state.activeHits
@@ -194,12 +198,9 @@ function targetNormal(state: AiState, rng: Rng): Coord {
 
 function targetHard(state: AiState, rng: Rng): Coord {
   const cluster = hitCluster(state, state.activeHits[0]);
-  const density = densityMap(state, cluster);
-  const candidates = [...density.keys()].map((k) => {
-    const [row, col] = k.split(',').map(Number);
-    return { row, col };
-  });
-  return bestByDensity(density, candidates, rng) ?? targetNormal(state, rng);
+  const candidates = clusterCandidates(state, cluster);
+  if (!candidates.length) return targetNormal(state, rng);
+  return bestByDensity(densityMap(state, cluster), candidates, rng) ?? pick(rng, candidates);
 }
 
 /** Picks the AI's next shot. Never returns a cell it has already fired at. */

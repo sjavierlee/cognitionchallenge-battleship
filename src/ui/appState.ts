@@ -12,7 +12,7 @@ import { coordLabel } from '../engine/coords';
 import { createGame, fire, setPlayerBoard, startGame } from '../engine/game';
 import { defaultRng, type Rng } from '../engine/rng';
 import { FLEET, shipSpec } from '../engine/ships';
-import type { Coord, GameState, Orientation, ShipKind, ShotResult } from '../engine/types';
+import type { Coord, GameState, Orientation, Ship, ShipKind, ShotResult } from '../engine/types';
 
 export type AppState = {
   game: GameState;
@@ -51,6 +51,12 @@ export function initialAppState(difficulty: Difficulty = 'normal', gameId = 0): 
     shotSeq: 0,
     gameId,
   };
+}
+
+function shipOrientation(ship: Ship): Orientation {
+  return ship.cells.length > 1 && ship.cells[0].row === ship.cells[1].row
+    ? 'horizontal'
+    : 'vertical';
 }
 
 function nextUnplaced(game: GameState): ShipKind | null {
@@ -92,10 +98,7 @@ export function appReducer(state: AppState, action: AppAction, rng: Rng = defaul
           ...state,
           game: setPlayerBoard(game, removeShip(game.player, existing.kind)),
           selectedShip: existing.kind,
-          orientation:
-            existing.cells.length > 1 && existing.cells[0].row === existing.cells[1].row
-              ? 'horizontal'
-              : 'vertical',
+          orientation: shipOrientation(existing),
           message: `Picked up ${existing.name}. Click to place it again.`,
         };
       }
@@ -125,6 +128,7 @@ export function appReducer(state: AppState, action: AppAction, rng: Rng = defaul
         ...state,
         game: setPlayerBoard(game, removeShip(game.player, action.kind)),
         selectedShip: action.kind,
+        orientation: shipOrientation(ship),
         message: `Picked up ${ship.name}. Click to place it again.`,
       };
     }
