@@ -267,6 +267,18 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   Verified with a DOM measurement script: hull top/bottom margins are now equal
   for horizontal ships (e.g. 12px/12px) and unchanged for vertical ones.
 
+### 21. Sunk ships in the fleet roster looked like a red line cut through them — Fixed
+
+- **Description (user-reported):** A sunk ship in the roster under each battle
+  board was recoloured red and struck through with a thin horizontal line,
+  which at 12px tall read as a red slash rather than a destroyed ship.
+- **Root cause:** The sunk state was expressed by re-tinting the silhouette to
+  the hit colour and drawing a `::after` line across its full width; at roster
+  size the red tint and the line merge into one stroke.
+- **Fix:** Keep the silhouette grey but dimmed/desaturated, and draw a red X
+  over it (two centred 18px strokes rotated ±45°, `::before`/`::after`), which
+  is the familiar "destroyed" glyph and stays readable in both themes.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only

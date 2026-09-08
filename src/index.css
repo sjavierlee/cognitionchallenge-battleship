@@ -704,24 +704,31 @@ kbd {
   transition: opacity 0.3s var(--ease-out);
 }
 
-.fleet-status-ship--sunk {
-  --ship: var(--hit);
-  --ship-super: var(--sunk);
-  --ship-detail: var(--sunk);
-  --ship-edge: var(--sunk);
-  --ship-deck: transparent;
-  opacity: 0.85;
+.fleet-status-ship--sunk .ship-sprite {
+  opacity: 0.45;
+  filter: saturate(0);
 }
 
+/* Red X over a sunk ship: two crossed strokes centred on the silhouette. */
+.fleet-status-ship--sunk::before,
 .fleet-status-ship--sunk::after {
   content: '';
   position: absolute;
-  left: -2px;
-  right: -2px;
+  left: 50%;
   top: 50%;
-  height: 1.5px;
-  background: var(--text);
-  transform: translateY(-50%);
+  width: 18px;
+  height: 2.5px;
+  border-radius: 2px;
+  background: var(--hit);
+  box-shadow: 0 0 0 0.5px var(--panel);
+}
+
+.fleet-status-ship--sunk::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.fleet-status-ship--sunk::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 /* Shot animations: one-shot, short, and static feedback stays after they end. */
