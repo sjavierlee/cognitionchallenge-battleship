@@ -248,6 +248,25 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   boards fit side by side down to ~900px, and the sub-900px breakpoint restores
   the larger mobile cells (boards stack there anyway).
 
+### 20. Horizontal ship silhouettes sat at the bottom of their cells — Fixed
+
+- **Description (user-reported):** Horizontally placed ships on the player grid
+  (and the placement ghost) rendered flush with the bottom edge of their row,
+  spilling over the row boundary, instead of being vertically centred like the
+  vertical ships were horizontally.
+- **Root cause:** The sprite `<svg>` used `height: 100%` inside a grid-item
+  wrapper with percentage padding. Chrome did not resolve the percentage
+  height against the wrapper, so the SVG fell back to its intrinsic aspect
+  ratio (5:1 for the carrier): it became taller than the row, was anchored at
+  the wrapper's top padding edge and overflowed downward, dragging the artwork
+  (centred inside the SVG) below the cell's midline. Vertical ships were only
+  1 cell wide, so the same fallback happened to yield the right size.
+- **Fix:** Make `.board-ship` a positioning context and absolutely position the
+  sprite with explicit `top/left` and `width/height: calc(100% - 2 * inset)`
+  (inset derived from `--cell`), which always resolves against the grid area.
+  Verified with a DOM measurement script: hull top/bottom margins are now equal
+  for horizontal ships (e.g. 12px/12px) and unchanged for vertical ones.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only

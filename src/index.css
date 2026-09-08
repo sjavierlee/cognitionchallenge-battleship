@@ -616,8 +616,16 @@ kbd {
 .board-ship {
   pointer-events: none;
   z-index: 1;
-  display: grid;
-  padding: 4%;
+  position: relative;
+}
+
+.board-ship .ship-sprite {
+  --inset: calc(var(--cell) * 0.04);
+  position: absolute;
+  top: var(--inset);
+  left: var(--inset);
+  width: calc(100% - 2 * var(--inset));
+  height: calc(100% - 2 * var(--inset));
 }
 
 .board-ship--ghost {
