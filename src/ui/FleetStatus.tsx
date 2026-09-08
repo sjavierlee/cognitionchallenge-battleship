@@ -5,7 +5,7 @@ import { ShipSprite } from './ShipSprite';
 
 type Props = { ships: Ship[] };
 
-/** One-line fleet roster under a board: each class as a mini silhouette, struck through once sunk. */
+/** One-line fleet roster under a board: each class as a mini silhouette, crossed out with a red X once sunk. */
 export function FleetStatus({ ships }: Props) {
   const afloat = ships.filter((s) => s.hits < s.size).length;
   return (
