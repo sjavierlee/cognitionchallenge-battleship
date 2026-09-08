@@ -58,7 +58,7 @@ describe('App', () => {
     // Enemy board is disabled while the AI thinks.
     expect(cell('Enemy board', 'A1')).toBeDisabled();
 
-    const log = screen.getByRole('list');
+    const log = screen.getByRole('list', { name: /shots fired/i });
     await waitFor(() => expect(within(log).getAllByRole('listitem')).toHaveLength(2), {
       timeout: 3000,
     });
@@ -117,5 +117,45 @@ describe('App', () => {
     await user.click(toggle);
     expect(localStorage.getItem('battleship.sound')).toBe('on');
     expect(screen.getByRole('button', { name: /mute sound/i })).toBeInTheDocument();
+  });
+
+  it('follows the system theme by default and persists an explicit toggle', async () => {
+    const user = userEvent.setup();
+    document.documentElement.dataset.theme = '';
+    render(<App />);
+
+    // jsdom's matchMedia stub reports light; no preference is written until the user toggles.
+    expect(document.documentElement.dataset.theme).toBe('light');
+    expect(localStorage.getItem('battleship.theme')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /switch to dark mode/i }));
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(localStorage.getItem('battleship.theme')).toBe('dark');
+    expect(screen.getByRole('button', { name: /switch to light mode/i })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('applies a saved theme on load', () => {
+    localStorage.setItem('battleship.theme', 'dark');
+    render(<App />);
+    expect(document.documentElement.dataset.theme).toBe('dark');
+    expect(screen.getByRole('button', { name: /switch to light mode/i })).toBeInTheDocument();
+  });
+
+  it('shows ship art on the player board and keeps enemy ships hidden until sunk', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole('button', { name: /randomize/i }));
+
+    const own = screen.getByRole('region', { name: 'Your board' });
+    expect(own.querySelectorAll('.board-ship')).toHaveLength(5);
+
+    await user.click(screen.getByRole('button', { name: /start battle/i }));
+    const enemy = screen.getByRole('region', { name: 'Enemy board' });
+    // Hidden enemy ships draw no sprite on the grid; the roster below still lists all five.
+    expect(enemy.querySelectorAll('.board-ship')).toHaveLength(0);
+    expect(within(enemy).getAllByTestId('ship-sprite')).toHaveLength(5);
   });
 });

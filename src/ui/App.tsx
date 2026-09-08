@@ -19,8 +19,11 @@ import { appReducer, initialAppState, type AppAction, type AppState } from './ap
 import { Board, type LastShot, type Preview } from './Board';
 import { DifficultyPicker } from './DifficultyPicker';
 import { GameOver } from './GameOver';
+import { IconToggle } from './IconToggle';
+import { AnchorIcon, MoonIcon, SpeakerOffIcon, SpeakerOnIcon, SunIcon } from './icons';
 import { ShipTray } from './ShipTray';
 import { ShotLog } from './ShotLog';
+import { useTheme } from './useTheme';
 
 const AI_DELAY_MS = 700;
 
@@ -36,6 +39,7 @@ export function App({ rng = defaultRng, aiDelayMs = AI_DELAY_MS }: Props = {}) {
   const [hover, setHover] = useState<Coord | null>(null);
   const [record, setRecord] = useState<GameRecord>(() => loadRecord());
   const [soundOn, setSoundOn] = useState<boolean>(() => loadSoundEnabled());
+  const { theme, toggleTheme } = useTheme();
   const recordedFor = useRef<number>(-1);
   const playedSeq = useRef<number>(0);
 
@@ -107,9 +111,15 @@ export function App({ rng = defaultRng, aiDelayMs = AI_DELAY_MS }: Props = {}) {
   const preview: Preview = useMemo(() => {
     if (!placing || !hover || !selectedShip) return null;
     const spec = shipSpec(selectedShip);
+    const footprint = shipCells(hover, spec.size, orientation);
+    const cells = footprint.filter(inBounds);
     return {
-      cells: shipCells(hover, spec.size, orientation).filter(inBounds),
+      cells,
       valid: canPlace(game.player, spec, hover, orientation),
+      ghost:
+        cells.length === footprint.length
+          ? { kind: selectedShip, origin: hover, orientation }
+          : null,
     };
   }, [placing, hover, selectedShip, orientation, game.player]);
 
@@ -124,10 +134,15 @@ export function App({ rng = defaultRng, aiDelayMs = AI_DELAY_MS }: Props = {}) {
   return (
     <div className="app">
       <header className="header">
-        <h1 className="title">Battleship</h1>
+        <h1 className="title">
+          <AnchorIcon className="title-mark" />
+          Battleship
+        </h1>
         <div className="header-right">
           <span className="record" title="Win / loss record (saved in this browser)">
-            {record.wins}W – {record.losses}L
+            <span className="record-tally">
+              {record.wins}W – {record.losses}L
+            </span>
             {record.wins + record.losses > 0 && (
               <button
                 type="button"
@@ -139,19 +154,26 @@ export function App({ rng = defaultRng, aiDelayMs = AI_DELAY_MS }: Props = {}) {
               </button>
             )}
           </span>
-          <button
-            type="button"
-            className="btn btn--ghost"
-            onClick={toggleSound}
-            aria-pressed={soundOn}
-            aria-label={soundOn ? 'Mute sound' : 'Enable sound'}
-          >
-            {soundOn ? 'Sound on' : 'Sound off'}
-          </button>
+          <IconToggle
+            pressed={soundOn}
+            onToggle={toggleSound}
+            labelOn="Mute sound"
+            labelOff="Enable sound"
+            iconOn={<SpeakerOnIcon />}
+            iconOff={<SpeakerOffIcon />}
+          />
+          <IconToggle
+            pressed={theme === 'dark'}
+            onToggle={toggleTheme}
+            labelOn="Switch to light mode"
+            labelOff="Switch to dark mode"
+            iconOn={<MoonIcon />}
+            iconOff={<SunIcon />}
+          />
         </div>
       </header>
 
-      <p className="status" role="status" aria-live="polite">
+      <p className={`status status--${game.phase}`} role="status" aria-live="polite">
         {message}
       </p>
 
@@ -188,7 +210,9 @@ export function App({ rng = defaultRng, aiDelayMs = AI_DELAY_MS }: Props = {}) {
               disabled={game.player.ships.length < 5}
               onClick={() => dispatch({ type: 'start' })}
             >
-              Start battle
+              {game.player.ships.length < 5
+                ? `Start battle (${5 - game.player.ships.length} to place)`
+                : 'Start battle'}
             </button>
           </div>
         </main>
@@ -200,8 +224,10 @@ export function App({ rng = defaultRng, aiDelayMs = AI_DELAY_MS }: Props = {}) {
               ariaLabel="Your board"
               board={game.player}
               showShips
+              showFleet
               disabled
               active={aiTurn}
+              badge={aiTurn ? 'Incoming…' : undefined}
               lastShot={lastAiShot}
             />
             <Board
@@ -209,8 +235,10 @@ export function App({ rng = defaultRng, aiDelayMs = AI_DELAY_MS }: Props = {}) {
               ariaLabel="Enemy board"
               board={game.ai}
               showShips={false}
+              showFleet
               disabled={!playerTurn}
               active={playerTurn}
+              badge={playerTurn ? 'Your turn' : undefined}
               lastShot={lastPlayerShot}
               onCellClick={(at) => dispatch({ type: 'player-fire', at })}
             />

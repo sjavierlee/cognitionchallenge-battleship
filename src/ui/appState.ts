@@ -8,11 +8,11 @@ import {
   removeShip,
   shipAt,
 } from '../engine/board';
-import { coordLabel } from '../engine/coords';
+import { coordLabel, shipOrientation } from '../engine/coords';
 import { createGame, fire, setPlayerBoard, startGame } from '../engine/game';
 import { defaultRng, type Rng } from '../engine/rng';
 import { FLEET, shipSpec } from '../engine/ships';
-import type { Coord, GameState, Orientation, Ship, ShipKind, ShotResult } from '../engine/types';
+import type { Coord, GameState, Orientation, ShipKind, ShotResult } from '../engine/types';
 
 export type AppState = {
   game: GameState;
@@ -51,12 +51,6 @@ export function initialAppState(difficulty: Difficulty = 'normal', gameId = 0): 
     shotSeq: 0,
     gameId,
   };
-}
-
-function shipOrientation(ship: Ship): Orientation {
-  return ship.cells.length > 1 && ship.cells[0].row === ship.cells[1].row
-    ? 'horizontal'
-    : 'vertical';
 }
 
 function nextUnplaced(game: GameState): ShipKind | null {

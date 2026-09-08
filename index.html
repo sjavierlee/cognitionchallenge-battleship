@@ -8,7 +8,21 @@
       name="description"
       content="Play Battleship in your browser against a hunt-and-target AI."
     />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f3eee3" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0e1822" />
     <title>Battleship</title>
+    <script>
+      // Apply the saved/system theme before first paint to avoid a flash.
+      try {
+        var t = localStorage.getItem('battleship.theme');
+        if (t !== 'light' && t !== 'dark') {
+          t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = t;
+      } catch (e) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

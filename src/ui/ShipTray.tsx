@@ -1,5 +1,8 @@
+import type { CSSProperties } from 'react';
 import { FLEET } from '../engine/ships';
 import type { Board, Orientation, ShipKind } from '../engine/types';
+import { RotateIcon, ShuffleIcon } from './icons';
+import { ShipSprite } from './ShipSprite';
 
 type Props = {
   board: Board;
@@ -22,9 +25,15 @@ export function ShipTray({
   onRandomize,
   onReset,
 }: Props) {
+  const placedCount = board.ships.length;
   return (
-    <div className="tray">
-      <h2 className="tray-title">Your ships</h2>
+    <div className="panel tray">
+      <div className="panel-head">
+        <h2 className="panel-title">Your ships</h2>
+        <span className="panel-meta tabular">
+          {placedCount}/{FLEET.length} placed
+        </span>
+      </div>
       <ul className="tray-list">
         {FLEET.map((spec) => {
           const placed = board.ships.some((s) => s.kind === spec.kind);
@@ -38,23 +47,33 @@ export function ShipTray({
                 aria-pressed={isSelected}
                 aria-label={`${spec.name}, ${spec.size} cells, ${placed ? 'placed (click to move)' : isSelected ? 'selected' : 'not placed'}`}
               >
-                <span className="tray-ship-name">{spec.name}</span>
-                <span className="tray-ship-cells" aria-hidden="true">
-                  {Array.from({ length: spec.size }, (_, i) => (
-                    <span key={i} className="tray-ship-cell" />
-                  ))}
+                <span className="tray-ship-text">
+                  <span className="tray-ship-name">{spec.name}</span>
+                  <span className="tray-ship-status">
+                    {placed ? 'Placed · click to move' : `${spec.size} cells`}
+                  </span>
                 </span>
-                <span className="tray-ship-status">{placed ? 'placed' : `${spec.size}`}</span>
+                <span className="tray-ship-art" style={{ '--len': spec.size } as CSSProperties}>
+                  <ShipSprite kind={spec.kind} />
+                </span>
               </button>
             </li>
           );
         })}
       </ul>
       <div className="tray-actions">
-        <button type="button" className="btn" onClick={onRotate}>
-          Rotate ({orientation === 'horizontal' ? '↔' : '↕'}) <kbd>R</kbd>
+        <button
+          type="button"
+          className="btn btn--icon"
+          onClick={onRotate}
+          aria-label={`Rotate ship, currently ${orientation}`}
+        >
+          <RotateIcon />
+          {orientation === 'horizontal' ? 'Horizontal' : 'Vertical'}
+          <kbd aria-hidden="true">R</kbd>
         </button>
-        <button type="button" className="btn" onClick={onRandomize}>
+        <button type="button" className="btn btn--icon" onClick={onRandomize}>
+          <ShuffleIcon />
           Randomize
         </button>
         <button type="button" className="btn btn--ghost" onClick={onReset}>

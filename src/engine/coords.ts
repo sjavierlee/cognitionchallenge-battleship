@@ -1,4 +1,4 @@
-import { BOARD_SIZE, type Coord, type Orientation } from './types';
+import { BOARD_SIZE, type Coord, type Orientation, type Ship } from './types';
 
 export function inBounds({ row, col }: Coord): boolean {
   return row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE;
@@ -23,6 +23,13 @@ export function shipCells(origin: Coord, size: number, orientation: Orientation)
     );
   }
   return cells;
+}
+
+/** Orientation of a placed ship, derived from its cells (single-cell ships read as vertical). */
+export function shipOrientation(ship: Ship): Orientation {
+  return ship.cells.length > 1 && ship.cells[0].row === ship.cells[1].row
+    ? 'horizontal'
+    : 'vertical';
 }
 
 export function orthogonalNeighbors(c: Coord): Coord[] {
