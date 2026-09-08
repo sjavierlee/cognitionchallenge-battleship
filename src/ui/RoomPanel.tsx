@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { roomHash } from '../net/roomCode';
-import type { NetState } from './appState';
+import { firstMover, type NetState } from './appState';
 import { CheckIcon, CopyIcon } from './icons';
 
 type Props = {
@@ -71,7 +71,9 @@ export function RoomPanel({ net, fleetComplete, onReady, onLeave, onRetry }: Pro
       <div className="panel-head">
         <h2 className="panel-title">{net.role === 'host' ? 'Your room' : 'Joined room'}</h2>
         <span className="panel-meta">
-          {net.role === 'host' ? 'You fire first' : 'Host fires first'}
+          {firstMover(net) === 'player'
+            ? 'You fire first'
+            : `${net.opponent?.name ?? (net.role === 'host' ? 'Guest' : 'Host')} fires first`}
         </span>
       </div>
 

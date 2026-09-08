@@ -31,6 +31,16 @@ function classify(err: PeerError<`${PeerErrorType}`>): LinkError {
 }
 
 const BROKER_RETRY_MS = 2000;
+/** Data-channel liveness probe: a silent peer is declared gone after `HEARTBEAT_TIMEOUT_MS`. */
+export const HEARTBEAT_MS = 2000;
+export const HEARTBEAT_TIMEOUT_MS = 7000;
+
+type Ping = { t: 'ping' };
+const PING: Ping = { t: 'ping' };
+
+function isPing(data: unknown): data is Ping {
+  return typeof data === 'object' && data !== null && (data as { t?: unknown }).t === 'ping';
+}
 
 /** Opens a PeerJS link. Loads the library lazily so AI-only visitors never download it. */
 export async function openPeerLink(role: Role, code: string, events: LinkEvents): Promise<Link> {
@@ -42,23 +52,53 @@ export async function openPeerLink(role: Role, code: string, events: LinkEvents)
   let conn: DataConnection | null = null;
   let closed = false;
   let retryTimer: number | undefined;
+  let heartbeat: number | undefined;
+
+  const stopHeartbeat = () => {
+    window.clearInterval(heartbeat);
+    heartbeat = undefined;
+  };
+
+  const dropped = (c: DataConnection) => {
+    if (conn !== c || closed) return;
+    stopHeartbeat();
+    conn = null;
+    events.onStatus('channel-closed');
+  };
+
+  // Browsers can take a long time (or forever, on a LAN) to notice a peer whose tab simply
+  // vanished, so both ends ping and give up on a silent channel themselves.
+  const startHeartbeat = (c: DataConnection) => {
+    stopHeartbeat();
+    let lastSeen = Date.now();
+    c.on('data', () => {
+      lastSeen = Date.now();
+    });
+    heartbeat = window.setInterval(() => {
+      if (conn !== c || !c.open) return stopHeartbeat();
+      if (Date.now() - lastSeen > HEARTBEAT_TIMEOUT_MS) {
+        dropped(c);
+        c.close();
+        return;
+      }
+      void c.send(PING);
+    }, HEARTBEAT_MS);
+  };
 
   const attach = (c: DataConnection) => {
     if (conn && conn !== c) conn.close();
     conn = c;
     c.on('open', () => {
-      if (conn === c) events.onStatus('channel-open');
+      if (conn !== c) return;
+      startHeartbeat(c);
+      events.onStatus('channel-open');
     });
     c.on('data', (data: unknown) => {
-      if (conn !== c) return;
+      if (conn !== c || isPing(data)) return;
       const msg = decode(data);
       if (msg) events.onMessage(msg);
     });
-    c.on('close', () => {
-      if (conn !== c || closed) return;
-      conn = null;
-      events.onStatus('channel-closed');
-    });
+    c.on('close', () => dropped(c));
     c.on('error', (err) => {
       if (conn === c) events.onError({ kind: 'webrtc', message: err.message });
     });
@@ -108,6 +148,7 @@ export async function openPeerLink(role: Role, code: string, events: LinkEvents)
     close() {
       closed = true;
       window.clearTimeout(retryTimer);
+      stopHeartbeat();
       conn?.close();
       peer.destroy();
     },

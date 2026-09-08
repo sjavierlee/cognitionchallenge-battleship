@@ -182,6 +182,7 @@ describe('friend mode UI', () => {
 
     link.connect();
     expect(screen.getByText(/connected with ada/i)).toBeInTheDocument();
+    expect(screen.getByText(/ada fires first/i)).toBeInTheDocument();
     expect(link.peer.net?.opponent?.name).toBe('Captain');
 
     await user.click(screen.getByRole('button', { name: /randomize/i }));

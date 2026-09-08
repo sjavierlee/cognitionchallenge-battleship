@@ -67,8 +67,13 @@ export function useP2P(
         });
       });
 
+    // Closing the tab skips React cleanup; tell the peer we're going while the channel is up.
+    const onPageHide = () => link?.send({ t: 'leave' });
+    window.addEventListener('pagehide', onPageHide);
+
     return () => {
       cancelled = true;
+      window.removeEventListener('pagehide', onPageHide);
       if (link) {
         link.send({ t: 'leave' });
         link.close();

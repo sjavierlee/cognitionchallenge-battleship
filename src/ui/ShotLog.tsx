@@ -14,7 +14,9 @@ export function ShotLog({ log, opponentLabel = 'AI' }: Props) {
     <aside className="panel shot-log" aria-label="Shot history">
       <div className="panel-head">
         <h2 className="panel-title">Shot log</h2>
-        <span className="panel-meta tabular">{log.length} shots</span>
+        <span className="panel-meta tabular">
+          {log.length} {log.length === 1 ? 'shot' : 'shots'}
+        </span>
       </div>
       {log.length === 0 ? (
         <p className="shot-log-empty">No shots fired yet. Pick a square in enemy waters.</p>

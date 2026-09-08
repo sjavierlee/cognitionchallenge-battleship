@@ -328,6 +328,39 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
 - **Fix:** Count only the opponent's shots and map that ordinal to
   `row = floor(n / 10)`, `col = n % 10`.
 
+### 26. Closing the opponent's tab was never detected (no reconnect countdown, shots stuck on "Firing…") — Fixed
+
+- **Description (found in the two-browser run):** Closing the guest's browser
+  window mid-game left the host on "Your turn" for over 60 s with no
+  _Reconnecting…_ banner or **Claim win**; the host's next shot hung on
+  "Firing at A1…".
+- **Root cause:** Disconnect detection relied entirely on the PeerJS
+  `DataConnection` `close` event, which only fires when the remote closes the
+  channel gracefully or ICE reports failure. A tab that simply vanishes does
+  neither promptly — on the same machine/LAN Chrome can keep the ICE state
+  "connected" for a long time — so the reducer never saw `channel-closed` and
+  the pending `fire` waited for a `result` that would never come.
+- **Fix:** Two layers. (1) `useP2P` sends `leave` on `pagehide`, so a closed or
+  reloaded tab tells the peer it's going while the channel is still up. (2) The
+  transport (`peer.ts`) runs a heartbeat: each side pings every 2 s, tracks the
+  time of the last message received (pings included), and declares the channel
+  dropped after 7 s of silence, emitting `channel-closed` itself. Pings are
+  consumed by the transport and never reach the protocol decoder. Together the
+  15 s grace countdown and **Claim win** now appear within seconds.
+
+### 27. Rematch lobby still said the host fires first — Fixed
+
+- **Description (found in the two-browser run):** After both players accepted a
+  rematch, the status line correctly announced that the guest fires first, but
+  the room panel header still read "You fire first" on the host and "Host fires
+  first" on the guest.
+- **Root cause:** `RoomPanel` derived its hint from `net.role` alone, ignoring
+  `gameNumber`, which is what actually decides the opener (even → host, odd →
+  guest).
+- **Fix:** Use the shared `firstMover(net)` helper and name the opponent
+  ("Devin B fires first"). Also fixed "1 shots" pluralisation in the shot log
+  and game-over copy spotted in the same run.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only
