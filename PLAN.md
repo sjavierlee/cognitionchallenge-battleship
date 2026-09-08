@@ -197,6 +197,17 @@ The AI keeps its own view of the player's board: `unknown | miss | hit | sunk`, 
   This reuses the pure engine as-is (`receiveShot` on my board; the opponent's board on
   my screen is just a tracking grid built from the results they send back).
 
+### Decisions (locked)
+
+| Topic      | Decision                                                                               |
+| ---------- | -------------------------------------------------------------------------------------- |
+| Entry      | Home screen with mode picker (Play vs AI / Play a friend / Join); last mode remembered |
+| Anti-cheat | None — casual trust between friends; each side reports results for its own board       |
+| First move | Host fires first; swaps on every rematch                                               |
+| Disconnect | 15 s "Reconnecting…" then forfeit with **Claim win** / **Back home**                   |
+| Signaling  | PeerJS public broker (`0.peerjs.com`), URL configurable for self-hosting later         |
+| Names      | Optional display name, default "Captain", stored in `localStorage`                     |
+
 ### Flow
 
 ```
@@ -209,8 +220,7 @@ Home ──► [Play vs AI]        (existing flow, unchanged)
                                     Host fires first (coin flip is a later option)
                              Turns alternate exactly as vs AI; opponent's move arrives
                                     over the data channel; UI shows "Waiting for <name>…"
-                             Game over ──► both boards revealed for verification ──►
-                                    [Rematch] (same room, sides swap who fires first)
+                             Game over ──► [Rematch] (same room, sides swap who fires first)
                                     [Back to home]
 ```
 
@@ -224,18 +234,17 @@ Home ──► [Play vs AI]        (existing flow, unchanged)
 
 ```ts
 type NetMessage =
-  | { t: 'hello'; v: 1; name: string; fleetHash: string } // sent by both on connect / on ready
-  | { t: 'ready'; fleetHash: string } // fleet placed and locked
+  | { t: 'hello'; v: 1; name: string; session: string } // sent by both when the channel opens
+  | { t: 'ready' } // fleet placed and locked
   | { t: 'fire'; seq: number; at: Coord } // my shot at your board
   | {
       t: 'result';
       seq: number;
       at: Coord;
       outcome: 'miss' | 'hit' | 'sunk';
-      sunk?: ShipKind;
+      sunk?: { kind: ShipKind; cells: Coord[] }; // lets the tracking grid draw the sunk ship
       gameOver: boolean;
     }
-  | { t: 'reveal'; ships: Ship[]; salt: string } // at game over: prove fleetHash
   | { t: 'rematch' } // request / accept
   | { t: 'leave' };
 ```
@@ -247,21 +256,13 @@ type NetMessage =
 - Both peers also run the same **protocol version** check in `hello`; mismatch shows
   "Your friend is on an older version — ask them to refresh".
 
-### Anti-cheat (light-touch, no server)
+### Trust model
 
-Since each side reports results for its own board, a modified client could lie.
-Mitigation that costs nothing extra:
-
-1. On **Ready**, each side sends `fleetHash = SHA-256(canonical(ships) + salt)`
-   (Web Crypto, built in).
-2. At **game over**, each side sends `reveal` with its ships and salt. The receiver
-   re-hashes, checks it matches the commitment, and replays every shot it fired
-   against the revealed fleet to confirm each reported `result` was truthful.
-3. Mismatch ⇒ result screen shows "Opponent's board didn't match their commitment"
-   and the game is not counted in the record.
-
-This prevents moving ships mid-game and lying about hits; it does not stop a player
-from quitting when losing (handled as a forfeit: "Your opponent left" + win credited).
+Each side reports results for its own board and the other side takes them at face
+value (decided: no commitment/reveal scheme — this is for playing friends). Quitting
+when losing is handled as a forfeit: "Your opponent left" + **Claim win**. `session`
+in `hello` is a random per-page-load token so a reloaded opponent (state lost) is
+detected as a new player rather than silently resuming.
 
 ### Engine changes (all pure, unit-tested)
 
@@ -274,7 +275,6 @@ from quitting when losing (handled as a forfeit: "Your opponent left" + win cred
 - `engine/tracking.ts`: `markCell(board, at, outcome, sunkShipCells?)` for the enemy
   tracking grid (currently the enemy board is a full `Board`; in P2P we only know
   results, so sunk ships are drawn from the cells the opponent reports as sunk).
-- `engine/hash.ts`: `canonicalFleet(ships)` + `fleetCommitment(ships, salt)`.
 
 ### New modules
 
@@ -310,12 +310,12 @@ src/ui/useP2P.ts    # hooks the peer wrapper into the reducer (like the current 
 
 ### Testing
 
-- **Unit**: protocol encode/decode/validation, room code alphabet, commitment hash and
-  reveal verification (including a tampered fleet), reducer transitions for every net
-  action including out-of-turn `fire`, duplicate `seq`, and `leave` mid-game.
+- **Unit**: protocol encode/decode/validation, room code alphabet, reducer transitions
+  for every net action including out-of-turn `fire`, duplicate `seq`, and `leave`
+  mid-game.
 - **Integration (no network)**: two reducers wired to each other through an in-memory
   fake `PeerLink` play a full scripted game; asserts both sides agree on every result,
-  turn order, winner and reveal verification.
+  turn order and winner.
 - **Browser (recorded)**: two browser tabs/windows on the deployed preview: host creates
   room, guest joins via link, both place, full game, rematch, and a mid-game tab close
   showing the forfeit path. Also one run on mobile width.
@@ -333,7 +333,7 @@ src/ui/useP2P.ts    # hooks the peer wrapper into the reducer (like the current 
 
 ### Milestones (v2)
 
-1. **Engine** — opponent-tracking grid, `applyOpponentResult`, fleet commitment + verify; tests.
+1. **Engine** — opponent-tracking grid, `applyOpponentResult`; tests.
 2. **Net layer** — protocol types/validation, room codes, PeerJS wrapper, in-memory fake link; tests.
 3. **Reducer + hook** — modes and net actions in `appState`, `useP2P`; two-reducer integration test.
 4. **UI** — Home, Lobby, Ready/opponent status, badges, disconnect/forfeit, rematch, record.

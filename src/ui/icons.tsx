@@ -74,6 +74,54 @@ export function RotateIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function RobotIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="4" y="7" width="12" height="9" rx="2" />
+      <path d="M10 4v3M7.5 16v1.5M12.5 16v1.5M2 11v2M18 11v2" />
+      <circle cx="7.75" cy="11.25" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="12.25" cy="11.25" r="0.9" fill="currentColor" stroke="none" />
+    </Icon>
+  );
+}
+
+export function ShipWheelIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <circle cx="10" cy="10" r="5" />
+      <circle cx="10" cy="10" r="1.5" />
+      <path d="M10 2.5V5M10 15v2.5M2.5 10H5M15 10h2.5M4.7 4.7l1.8 1.8M13.5 13.5l1.8 1.8M4.7 15.3l1.8-1.8M13.5 6.5l1.8-1.8" />
+    </Icon>
+  );
+}
+
+export function LinkIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M8.5 11.5l3-3" />
+      <path d="M7.25 12.75l-1.5 1.5a2.65 2.65 0 0 1-3.75-3.75l3-3a2.65 2.65 0 0 1 3.75 0" />
+      <path d="M12.75 7.25l1.5-1.5a2.65 2.65 0 0 1 3.75 3.75l-3 3a2.65 2.65 0 0 1-3.75 0" />
+    </Icon>
+  );
+}
+
+export function CopyIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <rect x="7" y="7" width="9.5" height="9.5" rx="1.75" />
+      <path d="M13 7V5.25A1.75 1.75 0 0 0 11.25 3.5H5.25A1.75 1.75 0 0 0 3.5 5.25v6A1.75 1.75 0 0 0 5.25 13H7" />
+    </Icon>
+  );
+}
+
+export function CheckIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M4.5 10.5l3.5 3.5 7.5-8" />
+    </Icon>
+  );
+}
+
 export function ShuffleIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>

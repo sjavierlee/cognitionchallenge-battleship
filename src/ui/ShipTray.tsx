@@ -8,6 +8,8 @@ type Props = {
   board: Board;
   selected: ShipKind | null;
   orientation: Orientation;
+  /** Locks every control, e.g. after pressing Ready in a friend game. */
+  disabled?: boolean;
   onSelect: (kind: ShipKind) => void;
   onPickUp: (kind: ShipKind) => void;
   onRotate: () => void;
@@ -19,6 +21,7 @@ export function ShipTray({
   board,
   selected,
   orientation,
+  disabled = false,
   onSelect,
   onPickUp,
   onRotate,
@@ -27,7 +30,7 @@ export function ShipTray({
 }: Props) {
   const placedCount = board.ships.length;
   return (
-    <div className="panel tray">
+    <div className={`panel tray${disabled ? ' tray--locked' : ''}`}>
       <div className="panel-head">
         <h2 className="panel-title">Your ships</h2>
         <span className="panel-meta tabular">
@@ -44,13 +47,18 @@ export function ShipTray({
                 type="button"
                 className={`tray-ship${isSelected ? ' tray-ship--selected' : ''}${placed ? ' tray-ship--placed' : ''}`}
                 onClick={() => (placed ? onPickUp(spec.kind) : onSelect(spec.kind))}
+                disabled={disabled}
                 aria-pressed={isSelected}
                 aria-label={`${spec.name}, ${spec.size} cells, ${placed ? 'placed (click to move)' : isSelected ? 'selected' : 'not placed'}`}
               >
                 <span className="tray-ship-text">
                   <span className="tray-ship-name">{spec.name}</span>
                   <span className="tray-ship-status">
-                    {placed ? 'Placed · click to move' : `${spec.size} cells`}
+                    {placed
+                      ? disabled
+                        ? 'Placed'
+                        : 'Placed · click to move'
+                      : `${spec.size} cells`}
                   </span>
                 </span>
                 <span className="tray-ship-art" style={{ '--len': spec.size } as CSSProperties}>
@@ -66,17 +74,18 @@ export function ShipTray({
           type="button"
           className="btn btn--icon"
           onClick={onRotate}
+          disabled={disabled}
           aria-label={`Rotate ship, currently ${orientation}`}
         >
           <RotateIcon />
           {orientation === 'horizontal' ? 'Horizontal' : 'Vertical'}
           <kbd aria-hidden="true">R</kbd>
         </button>
-        <button type="button" className="btn btn--icon" onClick={onRandomize}>
+        <button type="button" className="btn btn--icon" onClick={onRandomize} disabled={disabled}>
           <ShuffleIcon />
           Randomize
         </button>
-        <button type="button" className="btn btn--ghost" onClick={onReset}>
+        <button type="button" className="btn btn--ghost" onClick={onReset} disabled={disabled}>
           Reset
         </button>
       </div>

@@ -15,9 +15,9 @@ export type CellState = 'empty' | 'ship' | 'miss' | 'hit' | 'sunk';
 
 export type Board = { cells: CellState[][]; ships: Ship[] };
 
-export type Player = 'player' | 'ai';
+export type Player = 'player' | 'opponent';
 
-export type Phase = 'placement' | 'player-turn' | 'ai-turn' | 'game-over';
+export type Phase = 'placement' | 'player-turn' | 'opponent-turn' | 'game-over';
 
 export type Outcome = 'miss' | 'hit' | 'sunk';
 
@@ -31,7 +31,7 @@ export type ShotResult = {
 export type GameState = {
   phase: Phase;
   player: Board;
-  ai: Board;
+  opponent: Board;
   winner?: Player;
   log: ShotResult[];
 };

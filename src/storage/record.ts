@@ -2,13 +2,20 @@ import { DIFFICULTIES, type Difficulty } from '../ai/huntTarget';
 
 export type Tally = { wins: number; losses: number };
 
-export type GameRecord = Tally & { perDifficulty: Record<Difficulty, Tally> };
+/** Which opponent a result counts against: an AI difficulty or a friend over the network. */
+export type RecordBucket = Difficulty | 'friend';
+
+export type GameRecord = Tally & { perDifficulty: Record<Difficulty, Tally>; friend: Tally };
 
 export const RECORD_KEY = 'battleship.record';
 export const SOUND_KEY = 'battleship.sound';
 export const THEME_KEY = 'battleship.theme';
+export const NAME_KEY = 'battleship.name';
+export const MODE_KEY = 'battleship.mode';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
+
+export type LastMode = 'ai' | 'friend';
 
 export function emptyRecord(): GameRecord {
   return {
@@ -19,6 +26,7 @@ export function emptyRecord(): GameRecord {
       normal: { wins: 0, losses: 0 },
       hard: { wins: 0, losses: 0 },
     },
+    friend: { wins: 0, losses: 0 },
   };
 }
 
@@ -63,7 +71,7 @@ export function loadRecord(): GameRecord {
         : {};
     const perDifficulty = emptyRecord().perDifficulty;
     for (const { id } of DIFFICULTIES) perDifficulty[id] = tally(per[id]);
-    return { ...tally(obj), perDifficulty };
+    return { ...tally(obj), perDifficulty, friend: tally(obj.friend) };
   } catch {
     return emptyRecord();
   }
@@ -73,17 +81,17 @@ export function saveRecord(record: GameRecord): void {
   write(RECORD_KEY, JSON.stringify(record));
 }
 
-export function recordResult(record: GameRecord, difficulty: Difficulty, won: boolean): GameRecord {
+export function recordResult(record: GameRecord, bucket: RecordBucket, won: boolean): GameRecord {
   const key = won ? 'wins' : 'losses';
+  const total = { ...record, [key]: record[key] + 1 };
+  if (bucket === 'friend') {
+    return { ...total, friend: { ...record.friend, [key]: record.friend[key] + 1 } };
+  }
   return {
-    ...record,
-    [key]: record[key] + 1,
+    ...total,
     perDifficulty: {
       ...record.perDifficulty,
-      [difficulty]: {
-        ...record.perDifficulty[difficulty],
-        [key]: record.perDifficulty[difficulty][key] + 1,
-      },
+      [bucket]: { ...record.perDifficulty[bucket], [key]: record.perDifficulty[bucket][key] + 1 },
     },
   };
 }
@@ -92,8 +100,8 @@ export function recordResult(record: GameRecord, difficulty: Difficulty, won: bo
  * Applies a result on top of the latest persisted record (not a possibly stale in-memory copy),
  * so games finished in other tabs are not overwritten. Returns the saved record.
  */
-export function commitResult(difficulty: Difficulty, won: boolean): GameRecord {
-  const next = recordResult(loadRecord(), difficulty, won);
+export function commitResult(bucket: RecordBucket, won: boolean): GameRecord {
+  const next = recordResult(loadRecord(), bucket, won);
   saveRecord(next);
   return next;
 }
@@ -108,6 +116,23 @@ export function loadSoundEnabled(): boolean {
 
 export function saveSoundEnabled(on: boolean): void {
   write(SOUND_KEY, on ? 'on' : 'off');
+}
+
+export function loadPlayerName(): string {
+  return read(NAME_KEY) ?? '';
+}
+
+export function savePlayerName(name: string): void {
+  write(NAME_KEY, name.trim() === '' ? null : name.trim());
+}
+
+export function loadLastMode(): LastMode | null {
+  const raw = read(MODE_KEY);
+  return raw === 'ai' || raw === 'friend' ? raw : null;
+}
+
+export function saveLastMode(mode: LastMode): void {
+  write(MODE_KEY, mode);
 }
 
 export function loadThemePreference(): ThemePreference {

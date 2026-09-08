@@ -1,5 +1,5 @@
-import { inBounds, shipCells, surroundingCells } from './coords';
-import { FLEET } from './ships';
+import { inBounds, sameCoord, shipCells, surroundingCells } from './coords';
+import { FLEET, shipSpec } from './ships';
 import { defaultRng, pick, randomInt, type Rng } from './rng';
 import {
   BOARD_SIZE,
@@ -141,6 +141,39 @@ export function receiveShot(board: Board, coord: Coord): ShotOutcome {
   }
   next[coord.row][coord.col] = 'hit';
   return { board: { cells: next, ships }, outcome: 'hit' };
+}
+
+/** What an opponent reports when a shot sinks one of their ships: which one and where it lay. */
+export type SunkReport = { kind: ShipKind; cells: Coord[] };
+
+/**
+ * Records a reported shot outcome on a tracking grid whose ships are unknown. A sunk report adds
+ * the ship (fully hit) so it can be drawn; malformed reports throw.
+ */
+export function markTracking(
+  board: Board,
+  coord: Coord,
+  outcome: Outcome,
+  sunk?: SunkReport,
+): Board {
+  if (!inBounds(coord)) throw new Error('Shot out of bounds');
+  if (isShotAlready(board, coord)) throw new Error('Cell already targeted');
+  const next = cloneCells(board.cells);
+  if (outcome !== 'sunk') {
+    next[coord.row][coord.col] = outcome;
+    return { cells: next, ships: board.ships };
+  }
+  if (!sunk) throw new Error('Sunk report missing ship');
+  const spec = shipSpec(sunk.kind);
+  if (board.ships.some((s) => s.kind === spec.kind)) throw new Error('Ship already sunk');
+  const valid =
+    sunk.cells.length === spec.size &&
+    sunk.cells.every(inBounds) &&
+    sunk.cells.some((c) => sameCoord(c, coord)) &&
+    sunk.cells.every((c) => sameCoord(c, coord) || next[c.row][c.col] === 'hit');
+  if (!valid) throw new Error('Sunk report does not match earlier hits');
+  for (const c of sunk.cells) next[c.row][c.col] = 'sunk';
+  return { cells: next, ships: [...board.ships, { ...spec, cells: sunk.cells, hits: spec.size }] };
 }
 
 export function allSunk(board: Board): boolean {

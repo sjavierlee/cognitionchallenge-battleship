@@ -1,10 +1,16 @@
 # Battleship
 
-A simple, shareable Battleship game for the browser. Place your fleet, pick a
-difficulty, and out-shoot an AI that hunts and targets instead of firing
-randomly.
+A simple, shareable Battleship game for the browser. Place your fleet, then
+out-shoot an AI that hunts and targets instead of firing randomly — or send a
+friend a link and play them directly, browser to browser.
 
 ## Play
+
+The home screen offers three ways in (your last choice is remembered):
+**Play vs AI**, **Play a friend** (host a room), or **Join with a code**. You
+can enter an optional display name; otherwise you're _Captain_.
+
+### Versus the AI
 
 1. **Place your fleet** — click a ship in the tray, hover the board to preview,
    click to place. Press <kbd>R</kbd> (or the Rotate button) to switch between
@@ -14,7 +20,40 @@ randomly.
 3. **Start battle** — you fire first. Click any unknown cell on _Enemy waters_.
    Misses, hits, and sinks are shown on both boards and in the shot log.
 4. **Win** by sinking all five enemy ships before the AI sinks yours. Your
-   win/loss record (overall and per difficulty) is saved in `localStorage`.
+   win/loss record (overall, per difficulty, and vs friends) is saved in
+   `localStorage`.
+
+### Versus a friend
+
+1. **Host** — click _Play a friend_. You get a six-character room code and an
+   invite link (`…/#/room/K7Q2ZD`); copy either and send it to your friend.
+2. **Join** — your friend pastes the code (or opens the link) and clicks
+   _Join game_. Both of you place fleets and click **Ready**; placement locks
+   once you're ready.
+3. **Battle** — the host fires first; turns alternate. Only shots and their
+   results travel over the wire, so neither side ever sees the other's board
+   until a ship is sunk.
+4. **Rematch** from the game-over screen keeps the room open and swaps who
+   fires first.
+
+If the connection drops mid-game you'll see _Reconnecting…_ for 15 seconds
+while the guest redials. After that (or if your opponent leaves) you can
+**Claim win**, which counts as a forfeit in your friend record.
+
+#### How it works, and its limits
+
+- Purely peer-to-peer: the site is static, and the two browsers talk over a
+  WebRTC data channel via [PeerJS](https://peerjs.com). There are no accounts,
+  API keys, servers, or databases. The free public PeerJS broker
+  (`0.peerjs.com`) is used only to find each other; set
+  `VITE_PEER_HOST` / `VITE_PEER_PORT` / `VITE_PEER_PATH` /
+  `VITE_PEER_SECURE` to point at your own PeerServer instead.
+- Both players must be online at the same time; there's no lobby persistence.
+- Casual trust: each browser is authoritative for its own board and reports
+  hit/miss/sunk honestly. There is no anti-cheat verification — this is for
+  playing friends, not strangers.
+- Some restrictive networks (strict corporate NATs) block direct WebRTC
+  connections; without a TURN relay those pairs won't connect.
 
 Sound effects are off by default; toggle them from the header. The theme
 follows your system light/dark preference until you flip the header toggle,
@@ -47,16 +86,22 @@ npm run typecheck
 npm run build      # outputs dist/
 ```
 
-Stack: Vite, React 18, TypeScript, Vitest + Testing Library, plain CSS.
+Stack: Vite, React 18, TypeScript, Vitest + Testing Library, plain CSS, PeerJS
+(loaded lazily, only when you host or join a friend game).
 
 ```
 src/
   engine/   pure game rules (board, placement, shots, turn state)
   ai/       hunt/target AI with Easy/Normal/Hard strategies + simulator
-  ui/       React components and the app reducer
-  storage/  localStorage record + settings (sound, theme)
+  net/      room codes, wire protocol + validation, PeerJS link wrapper
+  ui/       React components, the app reducer (AI + friend modes), useP2P hook
+  storage/  localStorage record + settings (sound, theme, name, last mode)
   audio/    Web Audio synthesized sound effects
 ```
+
+The friend mode is tested without a network: `appState.p2p.test.ts` wires two
+reducers together through an in-memory link, and `App.p2p.test.tsx` drives the
+UI against a headless reducer opponent via an injected link factory.
 
 ## Deploy
 
