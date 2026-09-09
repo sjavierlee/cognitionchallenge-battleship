@@ -9,5 +9,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    // Some UI tests click through a whole game; CI runners are slower than local.
+    testTimeout: 20_000,
   },
 });
