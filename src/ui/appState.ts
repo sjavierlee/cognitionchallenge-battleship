@@ -459,10 +459,10 @@ export function appReducer(state: AppState, action: AppAction, rng: Rng = defaul
       if (!net || !net.opponent || (net.status !== 'reconnecting' && net.status !== 'handshake')) {
         return state;
       }
-      return withNet(
-        { ...state, message: `${net.opponent?.name ?? 'Your friend'} did not come back.` },
-        { status: 'lost' },
-      );
+      const gone = `${net.opponent.name} did not come back.`;
+      if (game.phase === 'placement') return reopenRoom(state, net, gone);
+      // Nothing to forfeit once the game is over; they are simply gone.
+      return withNet({ ...state, message: gone }, { status: inBattle(game) ? 'lost' : 'left' });
     }
 
     case 'peer-message':
@@ -471,6 +471,29 @@ export function appReducer(state: AppState, action: AppAction, rng: Rng = defaul
     case 'outbox-sent':
       return withNet(state, { outbox: state.net?.outbox.slice(action.count) ?? [] });
   }
+}
+
+/**
+ * The opponent is gone before the battle started. Nothing has been exchanged yet, so the host
+ * simply waits for the next guest; the guest's room no longer exists.
+ */
+function reopenRoom(state: AppState, net: NetState, why: string): AppState {
+  if (net.role === 'guest') {
+    return withNet({ ...state, message: why }, { status: 'left', outbox: [] });
+  }
+  return {
+    ...state,
+    net: {
+      ...net,
+      status: 'waiting',
+      opponent: null,
+      myReady: false,
+      theirReady: false,
+      outbox: [],
+    },
+    selectedShip: isFleetComplete(state.game.player) ? null : nextUnplaced(state.game),
+    message: `${why} Your room is still open — share the code again.`,
+  };
 }
 
 function rematchHint(net: NetState): string {
@@ -512,12 +535,6 @@ function applyLinkStatus(state: AppState, status: LinkStatus): AppState {
           status: net.role === 'host' ? 'waiting' : 'connecting',
           outbox: [],
         });
-      }
-      if (state.game.phase === 'game-over') {
-        return withNet(
-          { ...state, message: `${net.opponent.name} left the game.` },
-          { status: 'left', outbox: [] },
-        );
       }
       return withNet(
         { ...state, message: `Connection lost. Reconnecting to ${net.opponent.name}…` },
@@ -569,17 +586,19 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
         if (game.phase === 'game-over' && next.rematchMine) next = queue(next, { t: 'rematch' });
         return { ...state, net: next, message: `${msg.name} is back. Carry on!` };
       }
-      if (net.opponent && (inBattle(game) || (game.phase === 'placement' && net.theirReady))) {
+      if (net.opponent && inBattle(game)) {
         // A different session mid-game means they reloaded and lost their board.
         return withNet(
           { ...state, message: `${net.opponent.name} left the game (their page was reloaded).` },
           { status: 'left' },
         );
       }
+      // Before the battle nothing has been exchanged: whoever this is, both sides ready up afresh.
       const joined: NetState = {
         ...net,
         status: 'connected',
         opponent,
+        myReady: false,
         theirReady: false,
         rematchMine: false,
         rematchTheirs: false,
@@ -594,9 +613,8 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
       return {
         ...state,
         net: joined,
-        message: net.myReady
-          ? `${msg.name} joined. Waiting for them to place their fleet…`
-          : `${msg.name} joined! Place your fleet, then press Ready.`,
+        selectedShip: isFleetComplete(game.player) ? null : nextUnplaced(game),
+        message: `${msg.name} joined! Place your fleet, then press Ready.`,
       };
     }
 
@@ -682,11 +700,9 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
 
     case 'leave': {
       if (net.status === 'left' || net.status === 'lost') return state;
-      const name = net.opponent?.name ?? 'Your friend';
-      return withNet(
-        { ...state, message: `${name} left the game.` },
-        { status: 'left', outbox: [] },
-      );
+      const why = `${net.opponent?.name ?? 'Your friend'} left the game.`;
+      if (game.phase === 'placement') return reopenRoom(state, net, why);
+      return withNet({ ...state, message: why }, { status: 'left', outbox: [] });
     }
   }
 }

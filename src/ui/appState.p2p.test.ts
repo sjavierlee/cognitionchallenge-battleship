@@ -368,10 +368,109 @@ describe('friend mode: disconnects', () => {
     expect(t.host.game.player.ships).toHaveLength(5);
   });
 
+  it('unlocks a ready host when a different guest replaces the one that dropped', () => {
+    const t = new Table();
+    t.connect();
+    t.h({ type: 'randomize' });
+    t.h({ type: 'ready' });
+    t.h({ type: 'link-status', status: 'channel-closed' });
+    t.h({ type: 'link-status', status: 'channel-open' });
+    t.h({ type: 'peer-message', msg: { t: 'hello', v: 1, name: 'Cy', session: 'sess-cy' } });
+    expect(t.host.net?.status).toBe('connected');
+    expect(t.host.net?.opponent?.name).toBe('Cy');
+    // Cy never saw the earlier `ready`, so both sides start the lobby afresh.
+    expect(t.host.net?.myReady).toBe(false);
+    expect(t.host.game.player.ships).toHaveLength(5);
+    t.h({ type: 'ready' });
+    expect(t.host.net?.myReady).toBe(true);
+  });
+
+  it('reopens the room when the guest never returns during placement', () => {
+    const t = new Table();
+    t.connect();
+    t.h({ type: 'link-status', status: 'channel-closed' });
+    expect(t.host.net?.status).toBe('reconnecting');
+    t.h({ type: 'grace-expired' });
+    expect(t.host.net?.status).toBe('waiting');
+    expect(t.host.net?.opponent).toBeNull();
+    t.g({ type: 'link-status', status: 'channel-closed' });
+    t.g({ type: 'grace-expired' });
+    expect(t.guest.net?.status).toBe('left');
+  });
+
+  it('treats a guest who reloads during placement as a fresh join, even after they were ready', () => {
+    const t = new Table();
+    t.connect();
+    t.placeBoth();
+    t.g({ type: 'ready' });
+    expect(t.host.net?.theirReady).toBe(true);
+    t.h({ type: 'link-status', status: 'channel-closed' });
+    t.h({ type: 'link-status', status: 'channel-open' });
+    t.h({ type: 'peer-message', msg: { t: 'hello', v: 1, name: 'Bob', session: 'sess-new' } });
+    expect(t.host.net?.status).toBe('connected');
+    expect(t.host.net?.theirReady).toBe(false);
+    expect(t.host.game.phase).toBe('placement');
+  });
+
+  it('reopens the room for another guest when the current one leaves during placement', () => {
+    const t = new Table();
+    t.connect();
+    t.h({ type: 'randomize' });
+    t.h({ type: 'ready' });
+    t.h({ type: 'peer-message', msg: { t: 'leave' } });
+    expect(t.host.net?.status).toBe('waiting');
+    expect(t.host.net?.opponent).toBeNull();
+    expect(t.host.net?.myReady).toBe(false);
+    expect(t.host.game.player.ships).toHaveLength(5);
+    t.h({ type: 'link-status', status: 'channel-closed' });
+    t.h({ type: 'link-status', status: 'channel-open' });
+    t.h({ type: 'peer-message', msg: { t: 'hello', v: 1, name: 'Cy', session: 'sess-cy' } });
+    expect(t.host.net?.status).toBe('connected');
+    expect(t.host.net?.opponent?.name).toBe('Cy');
+  });
+
+  it('a guest whose host disappears in the lobby is told the room closed', () => {
+    const t = new Table();
+    t.connect();
+    t.g({ type: 'peer-message', msg: { t: 'leave' } });
+    expect(t.guest.net?.status).toBe('left');
+  });
+
   it('a guest leaving a finished game is reported without a forfeit option', () => {
     const t = battle();
     t.playToEnd();
+    t.h({ type: 'peer-message', msg: { t: 'leave' } });
+    expect(t.host.net?.status).toBe('left');
+    const before = t.host.game;
+    t.h({ type: 'claim-win' });
+    expect(t.host.game).toBe(before);
+  });
+
+  it('keeps the rematch option through a brief drop on the results screen', () => {
+    const t = battle();
+    t.playToEnd();
+    t.h({ type: 'rematch' });
+    t.offline = true;
     t.h({ type: 'link-status', status: 'channel-closed' });
+    t.g({ type: 'link-status', status: 'channel-closed' });
+    expect(t.host.net?.status).toBe('reconnecting');
+    t.offline = false;
+    t.h({ type: 'link-status', status: 'channel-open' });
+    t.g({ type: 'link-status', status: 'channel-open' });
+    expect(t.host.net?.status).toBe('connected');
+    expect(t.host.net?.rematchMine).toBe(true);
+    // The pending rematch request was re-sent, so accepting now starts game two.
+    expect(t.guest.net?.rematchTheirs).toBe(true);
+    t.g({ type: 'rematch' });
+    expect(t.host.game.phase).toBe('placement');
+    expect(t.host.net?.gameNumber).toBe(1);
+  });
+
+  it('gives up on a results-screen drop after the grace period without offering a forfeit', () => {
+    const t = battle();
+    t.playToEnd();
+    t.h({ type: 'link-status', status: 'channel-closed' });
+    t.h({ type: 'grace-expired' });
     expect(t.host.net?.status).toBe('left');
     const before = t.host.game;
     t.h({ type: 'claim-win' });

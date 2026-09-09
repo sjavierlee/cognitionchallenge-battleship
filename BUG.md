@@ -361,6 +361,48 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   ("Devin B fires first"). Also fixed "1 shots" pluralisation in the shot log
   and game-over copy spotted in the same run.
 
+### 28. Host room went dead if the guest left during placement — Fixed
+
+- **Description (found in the post-merge audit):** If the guest closed their tab,
+  reloaded, or lost their connection for 15 s while both players were still
+  placing ships, the host was stuck on "Bob left the game" / "Bob did not come
+  back" with **Leave** as the only way out. A guest who reloaded after
+  pressing Ready was even reported as having "left (their page was reloaded)"
+  while the host could still see them connected. Nothing had actually been
+  played yet, so there was no reason to end the room.
+- **Root cause:** The `leave` message and `grace-expired` action always moved
+  the room to `left`/`lost`, and a `hello` from a new session was treated as a
+  mid-game reload whenever the previous guest had been ready. Those rules were
+  written for the battle, where losing the opponent really does end the game,
+  and never distinguished the lobby.
+- **Fix:** Added `reopenRoom`: before the battle, a departed opponent (explicit
+  leave, or grace expiry after a drop) returns the host to `waiting` with the
+  opponent cleared and both ready flags reset, keeping the placed fleet and the
+  same room code; the guest is told the room closed. A `hello` from a new
+  session during placement is now always a fresh join (both sides ready up
+  again), and only mid-battle does it mean a forfeit. Regression tests cover a
+  ready host getting a new guest, a guest reload after Ready, leave during
+  placement, and grace expiry during placement.
+
+### 29. A brief connection drop on the results screen killed the rematch — Fixed
+
+- **Description (found in the post-merge audit):** After a game ended, any
+  `channel-closed` — including the heartbeat timing out during a 7 s network
+  hiccup — was treated as the opponent leaving. Rematch was hidden, the note
+  said "has left", and the guest stopped redialing, so the room was
+  unrecoverable even though both players were still sitting on the overlay.
+  The hidden `ConnectionBanner` also rendered a **Claim win** button behind
+  the overlay that did nothing, because `claim-win` is only valid mid-battle.
+- **Root cause:** `channel-closed` special-cased `game-over` to jump straight
+  to `left`, bypassing the 15 s grace that mid-game drops get; and the banner
+  was rendered for every non-placement phase.
+- **Fix:** A drop at game over now enters `reconnecting` like any other drop
+  (the guest keeps redialing, the resumed `hello` re-sends a pending rematch
+  request), and `grace-expired` at game over settles to `left` rather than
+  `lost` so no forfeit is offered. The banner is only rendered during the
+  battle; the game-over note shows "Reconnecting to …" while the grace timer
+  runs. Tests cover the reconnect-with-pending-rematch and grace-expiry paths.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only
