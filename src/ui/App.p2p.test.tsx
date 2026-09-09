@@ -1,0 +1,225 @@
+import { act, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { seededRng } from '../engine/rng';
+import type { Link, LinkErrorKind, LinkEvents, LinkFactory, Role } from '../net/link';
+import { loadRecord } from '../storage/record';
+import { App } from './App';
+import { appReducer, initialAppState, type AppAction, type AppState } from './appState';
+
+/**
+ * A transport whose far end is a second `appReducer` playing the opposite role, so the UI under
+ * test talks to a real (headless) opponent without any network.
+ */
+function fakeLink(peerName: string) {
+  let peer: AppState | null = null;
+  let events: LinkEvents | null = null;
+  let open = false;
+  const calls: { role: Role; code: string }[] = [];
+
+  const flushPeer = () => {
+    if (!peer?.net || !events || !open) return;
+    const out = peer.net.outbox;
+    peer = appReducer(peer, { type: 'outbox-sent', count: out.length });
+    for (const msg of out) events.onMessage(msg);
+  };
+
+  const factory: LinkFactory = async (role, code, ev) => {
+    calls.push({ role, code });
+    events = ev;
+    const peerRole = role === 'host' ? 'join-room' : 'host-room';
+    peer = appReducer(initialAppState(), {
+      type: peerRole,
+      code,
+      name: peerName,
+      session: `${peerName}-session`,
+    });
+    const link: Link = {
+      role,
+      code,
+      send: (msg) => {
+        if (!open || !peer) return false;
+        peer = appReducer(peer, { type: 'peer-message', msg });
+        flushPeer();
+        return true;
+      },
+      redial: () => {},
+      close: () => {
+        open = false;
+      },
+    };
+    return link;
+  };
+
+  return {
+    factory,
+    calls,
+    get peer() {
+      if (!peer) throw new Error('peer not created');
+      return peer;
+    },
+    /** Bring the channel up (both ends say hello). */
+    connect() {
+      act(() => {
+        open = true;
+        events?.onStatus('waiting');
+        events?.onStatus('channel-open');
+        if (peer) peer = appReducer(peer, { type: 'link-status', status: 'channel-open' });
+        flushPeer();
+      });
+    },
+    disconnect() {
+      act(() => {
+        open = false;
+        events?.onStatus('channel-closed');
+      });
+    },
+    fail(kind: LinkErrorKind) {
+      act(() => events?.onError({ kind, message: kind }));
+    },
+    /** Drive the headless opponent. */
+    peerAct(action: AppAction) {
+      act(() => {
+        if (peer) peer = appReducer(peer, action, seededRng(7));
+        flushPeer();
+      });
+    },
+  };
+}
+
+function cell(boardName: string, label: string): HTMLElement {
+  const board = screen.getByRole('region', { name: boardName });
+  return within(board).getByRole('button', { name: new RegExp(`^${label},`) });
+}
+
+describe('friend mode UI', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    window.history.replaceState(null, '', '/');
+  });
+  afterEach(() => {
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('hosts a room, plays a turn each way, and wins by forfeit after a disconnect', async () => {
+    const user = userEvent.setup();
+    const link = fakeLink('Bob');
+    render(<App linkFactory={link.factory} reconnectGraceMs={1000} rng={seededRng(3)} />);
+
+    await user.type(screen.getByRole('textbox', { name: /your name/i }), 'Ada');
+    await user.click(screen.getByRole('button', { name: /host a game/i }));
+
+    expect(link.calls).toEqual([{ role: 'host', code: expect.stringMatching(/^[A-Z2-9]{6}$/) }]);
+    const code = link.calls[0].code;
+    expect(window.location.hash).toBe(`#/room/${code}`);
+    expect(screen.getByLabelText(/^room code /i)).toHaveTextContent(code);
+    expect(screen.getByRole('button', { name: /copy invite link/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^ready$/i })).toBeDisabled();
+
+    link.connect();
+    expect(screen.getByText(/connected with bob/i)).toBeInTheDocument();
+    expect(link.peer.net?.opponent?.name).toBe('Ada');
+    expect(screen.getByText(/is placing their fleet/i)).toHaveTextContent(/^Bob is placing/);
+
+    // Ready needs a full fleet, then locks placement.
+    await user.click(screen.getByRole('button', { name: /randomize/i }));
+    await user.click(screen.getByRole('button', { name: /^ready$/i }));
+    expect(screen.getByRole('button', { name: /waiting for bob/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /randomize/i })).toBeDisabled();
+
+    link.peerAct({ type: 'randomize' });
+    link.peerAct({ type: 'ready' });
+
+    // Host fires first.
+    expect(screen.getByRole('heading', { name: /bob's waters/i })).toBeInTheDocument();
+    expect(screen.getByText('Your turn')).toBeInTheDocument();
+    await user.click(cell('Enemy board', 'C3'));
+    expect(cell('Enemy board', 'C3')).toHaveAccessibleName(/C3, (miss|hit|sunk)/);
+    expect(link.peer.game.log).toHaveLength(1);
+    expect(screen.getByText("Bob's turn")).toBeInTheDocument();
+    expect(cell('Enemy board', 'A1')).toBeDisabled();
+
+    link.peerAct({ type: 'player-fire', at: { row: 0, col: 0 } });
+    const log = screen.getByRole('list', { name: /shots fired/i });
+    const items = within(log).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent('Bob');
+    expect(items[0]).toHaveTextContent('A1');
+    expect(screen.getByText('Your turn')).toBeInTheDocument();
+
+    // Opponent drops: reconnect banner, then Claim win once the grace period lapses.
+    link.disconnect();
+    expect(screen.getAllByText(/reconnecting to bob/i).length).toBeGreaterThan(0);
+    expect(cell('Enemy board', 'B2')).toBeDisabled();
+    const claim = await screen.findByRole('button', { name: /claim win/i }, { timeout: 4000 });
+    await user.click(claim);
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /victory/i })).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(/by forfeit/i);
+    expect(dialog).toHaveTextContent('Record vs friends1W – 0L');
+    expect(within(dialog).queryByRole('button', { name: /rematch/i })).not.toBeInTheDocument();
+    expect(loadRecord().friend).toEqual({ wins: 1, losses: 0 });
+
+    await user.click(within(dialog).getByRole('button', { name: /back to home/i }));
+    expect(screen.getByRole('button', { name: /play vs ai/i })).toBeInTheDocument();
+    expect(window.location.hash).toBe('');
+    expect(localStorage.getItem('battleship.name')).toBe('Ada');
+    expect(localStorage.getItem('battleship.mode')).toBe('friend');
+  });
+
+  it('joins from an invite link and waits for the host to fire first', async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/#/room/k7q2zd');
+    const link = fakeLink('Ada');
+    render(<App linkFactory={link.factory} rng={seededRng(5)} />);
+
+    const codeInput = screen.getByRole('textbox', { name: /room code/i });
+    expect(codeInput).toHaveValue('K7Q2ZD');
+    await user.click(screen.getByRole('button', { name: /join game/i }));
+    expect(link.calls).toEqual([{ role: 'guest', code: 'K7Q2ZD' }]);
+    expect(screen.getByText(/host fires first/i)).toBeInTheDocument();
+
+    link.connect();
+    expect(screen.getByText(/connected with ada/i)).toBeInTheDocument();
+    expect(screen.getByText(/ada fires first/i)).toBeInTheDocument();
+    expect(link.peer.net?.opponent?.name).toBe('Captain');
+
+    await user.click(screen.getByRole('button', { name: /randomize/i }));
+    await user.click(screen.getByRole('button', { name: /^ready$/i }));
+    link.peerAct({ type: 'randomize' });
+    link.peerAct({ type: 'ready' });
+
+    expect(screen.getByText("Ada's turn")).toBeInTheDocument();
+    expect(cell('Enemy board', 'A1')).toBeDisabled();
+    link.peerAct({ type: 'player-fire', at: { row: 9, col: 9 } });
+    expect(screen.getByText('Your turn')).toBeInTheDocument();
+    expect(cell('Enemy board', 'A1')).toBeEnabled();
+  });
+
+  it('rejects a malformed code and explains connection errors', async () => {
+    const user = userEvent.setup();
+    const link = fakeLink('Ada');
+    render(<App linkFactory={link.factory} />);
+
+    await user.type(screen.getByRole('textbox', { name: /room code/i }), 'abc');
+    await user.click(screen.getByRole('button', { name: /join game/i }));
+    expect(screen.getByRole('alert')).toHaveTextContent(/6 letters or digits/i);
+    expect(link.calls).toHaveLength(0);
+
+    await user.clear(screen.getByRole('textbox', { name: /room code/i }));
+    await user.type(
+      screen.getByRole('textbox', { name: /room code/i }),
+      'https://x.test/#/room/QQQQQQ',
+    );
+    await user.click(screen.getByRole('button', { name: /join game/i }));
+    await waitFor(() => expect(link.calls).toEqual([{ role: 'guest', code: 'QQQQQQ' }]));
+
+    link.fail('room-not-found');
+    expect(screen.getByText(/no open game found for code QQQQQQ/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^ready$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /back to home/i }));
+    expect(screen.getByRole('button', { name: /play vs ai/i })).toBeInTheDocument();
+  });
+});

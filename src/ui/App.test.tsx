@@ -6,6 +6,13 @@ import { coordLabel } from '../engine/coords';
 import { seededRng } from '../engine/rng';
 import { App } from './App';
 
+type User = ReturnType<typeof userEvent.setup>;
+
+/** Every game starts on the Home screen; this walks into AI placement. */
+async function startAi(user: User) {
+  await user.click(screen.getByRole('button', { name: /play vs ai/i }));
+}
+
 function cell(boardName: string, label: string): HTMLElement {
   const board = screen.getByRole('region', { name: boardName });
   return within(board).getByRole('button', { name: new RegExp(`^${label},`) });
@@ -19,6 +26,7 @@ describe('App', () => {
   it('places ships by clicking, rotates with R, and enables Start once the fleet is complete', async () => {
     const user = userEvent.setup();
     render(<App />);
+    await startAi(user);
 
     const start = screen.getByRole('button', { name: /start battle/i });
     expect(start).toBeDisabled();
@@ -45,6 +53,7 @@ describe('App', () => {
   it('runs a battle turn: player fires, AI replies after a delay, log updates', async () => {
     const user = userEvent.setup();
     render(<App />);
+    await startAi(user);
 
     await user.click(screen.getByRole('button', { name: /randomize/i }));
     await user.click(screen.getByLabelText(/easy/i));
@@ -77,6 +86,7 @@ describe('App', () => {
     randomizeFleet(createBoard(), mirror);
     const enemy = randomizeFleet(createBoard(), mirror);
     render(<App rng={seededRng(2024)} aiDelayMs={0} />);
+    await startAi(user);
 
     await user.click(screen.getByRole('button', { name: /randomize/i }));
     await user.click(screen.getByLabelText(/hard/i));
@@ -147,6 +157,7 @@ describe('App', () => {
   it('shows ship art on the player board and keeps enemy ships hidden until sunk', async () => {
     const user = userEvent.setup();
     render(<App />);
+    await startAi(user);
     await user.click(screen.getByRole('button', { name: /randomize/i }));
 
     const own = screen.getByRole('region', { name: 'Your board' });

@@ -23,7 +23,7 @@ A simple, shareable Battleship web game playable in the browser against an AI op
 
 ## 2. Non-goals (v1)
 
-- Multiplayer / networking / accounts.
+- ~~Multiplayer / networking~~ — see section 11 (v2: peer-to-peer "Play a friend"). Still no accounts.
 - Persistence beyond the win/loss record (no saved games).
 - Salvo or other rule variants.
 
@@ -172,3 +172,169 @@ The AI keeps its own view of the player's board: `unknown | miss | hit | sunk`, 
 5. **Battle UI** — two boards, turn loop, status bar, shot log, game over.
 6. **Polish** — animations, sound toggle, win/loss record, responsive layout, a11y.
 7. **Ship** — README; owner connects repo to Vercel/Netlify.
+
+---
+
+## 11. v2 — Multiplayer: "Play a friend" (peer-to-peer)
+
+### Constraints and approach
+
+- Hosting stays a static site on Vercel/Netlify: **no database, no accounts, no game
+  server**. Vercel functions are stateless and cannot hold WebSockets, so the live
+  link between the two players is a direct browser-to-browser **WebRTC data channel**
+  via [PeerJS](https://peerjs.com) (`peerjs@1.5.5`, ~2 MB unpacked / ~50 kB gzipped
+  in the bundle, published 2025-06 — stable).
+- The only third party involved is a **signaling broker** that introduces the two
+  browsers to each other; after the handshake it carries no game traffic. Default:
+  PeerJS's free public cloud broker (`0.peerjs.com`, no key/account). Its URL is a
+  single config value so it can be pointed at a self-hosted `peer` server later if
+  the public one proves flaky.
+- STUN via Google's public servers (PeerJS default). **No TURN relay**: a small share
+  of pairs behind symmetric/corporate NATs will fail to connect; the UI must say so
+  clearly ("Couldn't connect — try another network or play the AI") rather than hang.
+- Game state lives in the two browsers. Each player is **authoritative for their own
+  board**: they never send their ship positions, only the result of each incoming shot.
+  This reuses the pure engine as-is (`receiveShot` on my board; the opponent's board on
+  my screen is just a tracking grid built from the results they send back).
+
+### Decisions (locked)
+
+| Topic      | Decision                                                                               |
+| ---------- | -------------------------------------------------------------------------------------- |
+| Entry      | Home screen with mode picker (Play vs AI / Play a friend / Join); last mode remembered |
+| Anti-cheat | None — casual trust between friends; each side reports results for its own board       |
+| First move | Host fires first; swaps on every rematch                                               |
+| Disconnect | 15 s "Reconnecting…" then forfeit with **Claim win** / **Back home**                   |
+| Signaling  | PeerJS public broker (`0.peerjs.com`), URL configurable for self-hosting later         |
+| Names      | Optional display name, default "Captain", stored in `localStorage`                     |
+
+### Flow
+
+```
+Home ──► [Play vs AI]        (existing flow, unchanged)
+     └─► [Play a friend] ──► Host: generates room code (6 chars, e.g. K7Q2ZD),
+                                    shows share link /#/room/K7Q2ZD + copy button,
+                                    places ships while waiting
+                             Guest: opens link (or types code) ──► connects ──► places ships
+                             Both:  "Ready" when fleet placed ──► battle starts when both ready
+                                    Host fires first (coin flip is a later option)
+                             Turns alternate exactly as vs AI; opponent's move arrives
+                                    over the data channel; UI shows "Waiting for <name>…"
+                             Game over ──► [Rematch] (same room, sides swap who fires first)
+                                    [Back to home]
+```
+
+- Room code **is** the PeerJS peer id for the host (prefixed, e.g. `bship-K7Q2ZD`), so
+  no lookup service is needed: the guest simply `connect()`s to that id.
+- Optional display name (localStorage `battleship.name`, default "Captain").
+- URL routing is hash-based (`/#/room/CODE`) so it works on any static host with no
+  rewrite rules.
+
+### Protocol (JSON messages over one reliable, ordered data channel)
+
+```ts
+type NetMessage =
+  | { t: 'hello'; v: 1; name: string; session: string } // sent by both when the channel opens
+  | { t: 'ready' } // fleet placed and locked
+  | { t: 'fire'; seq: number; at: Coord } // my shot at your board
+  | {
+      t: 'result';
+      seq: number;
+      at: Coord;
+      outcome: 'miss' | 'hit' | 'sunk';
+      sunk?: { kind: ShipKind; cells: Coord[] }; // lets the tracking grid draw the sunk ship
+      gameOver: boolean;
+    }
+  | { t: 'rematch' } // request / accept
+  | { t: 'leave' };
+```
+
+- `seq` numbers every shot; a `result` must echo the `seq` of the `fire` it answers.
+  Out-of-order or duplicate messages are ignored (defensive, the channel is ordered).
+- Turn enforcement is local: I only accept a `fire` when it's your turn, and only send
+  one when it's mine; anything else is dropped and logged.
+- Both peers also run the same **protocol version** check in `hello`; mismatch shows
+  "Your friend is on an older version — ask them to refresh".
+
+### Trust model
+
+Each side reports results for its own board and the other side takes them at face
+value (decided: no commitment/reveal scheme — this is for playing friends). Quitting
+when losing is handled as a forfeit: "Your opponent left" + **Claim win**. `session`
+in `hello` is a random per-page-load token so a reloaded opponent (state lost) is
+detected as a new player rather than silently resuming.
+
+### Engine changes (all pure, unit-tested)
+
+- `engine/types.ts`: `Player` becomes `'player' | 'opponent'` semantics for the local
+  view (`ai` renamed/aliased to `opponent` in `GameState`; AI mode keeps working since
+  the AI is just one kind of opponent).
+- `engine/game.ts`: add `applyOpponentResult(state, at, outcome, sunk)` — records a
+  shot I fired on my tracking grid without needing the opponent's ships; the existing
+  `fire()` path is used for shots _received_ against my own board.
+- `engine/tracking.ts`: `markCell(board, at, outcome, sunkShipCells?)` for the enemy
+  tracking grid (currently the enemy board is a full `Board`; in P2P we only know
+  results, so sunk ships are drawn from the cells the opponent reports as sunk).
+
+### New modules
+
+```
+src/net/
+  peer.ts         # thin wrapper over PeerJS: createHost(code) / joinRoom(code); emits typed
+                  # events; handles open/close/error, reconnect-with-same-id for the host
+  protocol.ts     # NetMessage types, encode/decode + runtime validation (zod-free hand
+                  # validation to keep bundle small)
+  roomCode.ts     # generate/validate codes (crockford-ish alphabet, no 0/O/1/I)
+src/ui/
+  Home.tsx        # mode picker: Play vs AI / Play a friend (host) / Join with code
+  Lobby.tsx       # share link + copy, connection status, opponent name, Ready state
+  OpponentBadge.tsx  # "Connected · Captain Ada" / "Reconnecting…" / "Left"
+src/ui/appState.ts  # gains 'mode: ai | p2p-host | p2p-guest' and net actions:
+                    # 'peer-connected', 'peer-ready', 'peer-fire', 'peer-result', 'peer-left'
+src/ui/useP2P.ts    # hooks the peer wrapper into the reducer (like the current AI timer effect)
+```
+
+### UI / UX
+
+- Home screen replaces the direct jump into placement (one extra click for AI players;
+  last mode remembered in localStorage so returning players land where they were).
+- Lobby: big room code, "Copy link" (Clipboard API, falls back to selecting the text),
+  Web Share on mobile, QR code **not** included (keeps deps minimal — can add later).
+- Placement screen unchanged, plus a **Ready** button (replaces "Start battle") and an
+  opponent status line ("Waiting for Ada to place ships…").
+- Battle screen unchanged; badges become "Your turn" / "Ada's turn"; shot log names
+  the opponent; optional turn timer **not** included in v2.
+- Disconnect handling: 15 s "Reconnecting…" banner (PeerJS auto-reconnect to broker;
+  guest re-dials host id), then "Your opponent left" with **Claim win** / **Back home**.
+- Record: P2P wins/losses stored under `record.p2p` alongside per-difficulty AI stats.
+
+### Testing
+
+- **Unit**: protocol encode/decode/validation, room code alphabet, reducer transitions
+  for every net action including out-of-turn `fire`, duplicate `seq`, and `leave`
+  mid-game.
+- **Integration (no network)**: two reducers wired to each other through an in-memory
+  fake `PeerLink` play a full scripted game; asserts both sides agree on every result,
+  turn order and winner.
+- **Browser (recorded)**: two browser tabs/windows on the deployed preview: host creates
+  room, guest joins via link, both place, full game, rematch, and a mid-game tab close
+  showing the forfeit path. Also one run on mobile width.
+- PeerJS itself is mocked in unit tests; only the browser run touches the real broker.
+
+### Risks
+
+| Risk                                       | Mitigation                                                                           |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ |
+| Public PeerJS broker down / rate-limited   | Broker URL is config; document self-hosting `peer` on Fly/Render (free tier)         |
+| NAT traversal fails (no TURN)              | Clear error + fallback to AI; TURN can be added later via a free Metered/Twilio tier |
+| Bundle growth (~50 kB gz)                  | `import()` the `src/net` chunk only when "Play a friend" is chosen                   |
+| Both players must be online simultaneously | Stated on the lobby screen; async play is out of scope                               |
+| Host closes tab → room gone                | Guest sees "Host left"; rematch requires a new code                                  |
+
+### Milestones (v2)
+
+1. **Engine** — opponent-tracking grid, `applyOpponentResult`; tests.
+2. **Net layer** — protocol types/validation, room codes, PeerJS wrapper, in-memory fake link; tests.
+3. **Reducer + hook** — modes and net actions in `appState`, `useP2P`; two-reducer integration test.
+4. **UI** — Home, Lobby, Ready/opponent status, badges, disconnect/forfeit, rematch, record.
+5. **Verify** — recorded two-browser run on a preview deploy; BUG.md entries; README section.

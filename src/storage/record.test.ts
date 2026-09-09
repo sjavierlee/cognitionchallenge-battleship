@@ -58,6 +58,7 @@ describe('loadRecord', () => {
         normal: { wins: 0, losses: 0 },
         hard: { wins: 2, losses: 1 },
       },
+      friend: { wins: 0, losses: 0 },
     });
   });
 });

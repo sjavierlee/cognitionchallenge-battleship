@@ -279,6 +279,88 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   over it (two centred 18px strokes rotated ±45°, `::before`/`::after`), which
   is the familiar "destroyed" glyph and stays readable in both themes.
 
+## Multiplayer (v2, P2P friend mode)
+
+### 22. Handshake never completed when both `hello`s arrived before the channel-open status — Fixed
+
+- **Description:** In the two-reducer integration test 13 of 17 cases failed
+  with `expected 'handshake' to be 'connected'`: neither side could click
+  Ready and the battle never started.
+- **Root cause:** The reducer's `link-status: channel-open` branch always set
+  `net.status = 'handshake'`. If the peer's `hello` had already been processed
+  (which upgrades the status to `connected`), the later `channel-open` event
+  demoted it back to `handshake`, and no further event could re-promote it.
+  Event ordering between the transport status callback and the first message
+  is not guaranteed in PeerJS either, so this would have hit real users
+  intermittently.
+- **Fix:** `channel-open` preserves an existing `connected` status and only
+  moves `waiting`/`connecting` to `handshake`; the outgoing `hello` is still
+  queued so a reconnecting peer re-learns our session.
+
+### 23. Rematch announced the wrong first player — Fixed
+
+- **Description:** After a rematch the status line could say "Bob fires first"
+  while the host's board was actually enabled (or vice versa).
+- **Root cause:** `rematchHint()` was computed from the pre-rematch `NetState`
+  and only afterwards was `gameNumber` incremented, so the text described the
+  previous game's opening player while `startVersus` used the new one.
+- **Fix:** Increment `gameNumber` first and derive both the game's first mover
+  and the hint text from the same updated `NetState` (`firstMover(net)`).
+
+### 24. Generalising `Player` from `'ai'` to `'opponent'` left stale references — Fixed
+
+- **Description:** After renaming the second player so the engine could serve
+  both the AI and a remote friend, the typecheck failed
+  (`'Player' and '"ai"' have no overlap`) and, once fixed, the opponent's shot
+  log rows lost their styling.
+- **Root cause:** `App.tsx` still compared `lastLogged.by === 'ai'`, and the
+  CSS selector `.shot-log-item--ai` no longer matched the class emitted by
+  `ShotLog` (`shot-log-item--${entry.by}`), which the compiler cannot see.
+- **Fix:** Rename the comparison and the selector to `opponent`; the `App`
+  tests (shot-log row assertions) and the p2p UI test cover both modes.
+
+### 25. Engine test generated out-of-bounds shots — Fixed
+
+- **Description:** A new `game.test.ts` case that walks the opponent through a
+  losing game threw `out of bounds` after ten iterations.
+- **Root cause:** The helper derived the column from `9 - log.length`, where
+  the log counts both players' shots, so it went negative.
+- **Fix:** Count only the opponent's shots and map that ordinal to
+  `row = floor(n / 10)`, `col = n % 10`.
+
+### 26. Closing the opponent's tab was never detected (no reconnect countdown, shots stuck on "Firing…") — Fixed
+
+- **Description (found in the two-browser run):** Closing the guest's browser
+  window mid-game left the host on "Your turn" for over 60 s with no
+  _Reconnecting…_ banner or **Claim win**; the host's next shot hung on
+  "Firing at A1…".
+- **Root cause:** Disconnect detection relied entirely on the PeerJS
+  `DataConnection` `close` event, which only fires when the remote closes the
+  channel gracefully or ICE reports failure. A tab that simply vanishes does
+  neither promptly — on the same machine/LAN Chrome can keep the ICE state
+  "connected" for a long time — so the reducer never saw `channel-closed` and
+  the pending `fire` waited for a `result` that would never come.
+- **Fix:** Two layers. (1) `useP2P` sends `leave` on `pagehide`, so a closed or
+  reloaded tab tells the peer it's going while the channel is still up. (2) The
+  transport (`peer.ts`) runs a heartbeat: each side pings every 2 s, tracks the
+  time of the last message received (pings included), and declares the channel
+  dropped after 7 s of silence, emitting `channel-closed` itself. Pings are
+  consumed by the transport and never reach the protocol decoder. Together the
+  15 s grace countdown and **Claim win** now appear within seconds.
+
+### 27. Rematch lobby still said the host fires first — Fixed
+
+- **Description (found in the two-browser run):** After both players accepted a
+  rematch, the status line correctly announced that the guest fires first, but
+  the room panel header still read "You fire first" on the host and "Host fires
+  first" on the guest.
+- **Root cause:** `RoomPanel` derived its hint from `net.role` alone, ignoring
+  `gameNumber`, which is what actually decides the opener (even → host, odd →
+  guest).
+- **Fix:** Use the shared `firstMover(net)` helper and name the opponent
+  ("Devin B fires first"). Also fixed "1 shots" pluralisation in the shot log
+  and game-over copy spotted in the same run.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only
