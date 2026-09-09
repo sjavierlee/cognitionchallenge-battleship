@@ -424,6 +424,30 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   the results screen and Rematch works as usual. Tests cover the resume and
   the ignore paths.
 
+### 31. A third browser opening an occupied room evicted the guest — Fixed
+
+- **Description (flagged by Devin Review on #28):** The host accepted every
+  incoming PeerJS connection and closed the current one to make room. If a
+  third person opened the invite link during placement, the seated guest was
+  cut off, redialed, and cut the newcomer off in turn — two guests could keep
+  ejecting each other and the host's Ready state reset each time. (On `main`
+  the same thing happened whenever the seated guest had not yet pressed
+  Ready; #28 extended it to the ready case by treating any new session during
+  placement as a fresh join.)
+- **Root cause:** `peer.ts` `attach()` unconditionally replaced `conn`, and
+  the reducer has no way to know whether the previous opponent actually
+  departed — it only ever sees the new `hello`.
+- **Fix:** The link enforces the two-seat rule itself. While the host's data
+  channel is open, an extra connection is answered with a link-level
+  `{ t: 'busy' }` control message (like the heartbeat `ping`, it never
+  reaches the game protocol) and closed; the seated guest is untouched. The
+  newcomer surfaces it as a `room-full` link error: "Room K7Q2ZD already has
+  two players. Ask your friend for a new code." A guest that is legitimately
+  redialing while the host has not yet noticed its drop may also be told
+  `busy`; that is ignored while `reconnecting` (like other transient errors)
+  and the next redial gets through once the heartbeat frees the seat. Tests
+  cover both the error and the ignored-while-reconnecting paths.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only

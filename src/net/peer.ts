@@ -35,11 +35,17 @@ const BROKER_RETRY_MS = 2000;
 export const HEARTBEAT_MS = 2000;
 export const HEARTBEAT_TIMEOUT_MS = 7000;
 
-type Ping = { t: 'ping' };
-const PING: Ping = { t: 'ping' };
+/** Link-level chatter that never reaches the game protocol. */
+type Control = { t: 'ping' } | { t: 'busy' };
+const PING: Control = { t: 'ping' };
+/** Host's reply to a third browser knocking while the room already has two players. */
+const BUSY: Control = { t: 'busy' };
+const BUSY_CLOSE_MS = 2000;
 
-function isPing(data: unknown): data is Ping {
-  return typeof data === 'object' && data !== null && (data as { t?: unknown }).t === 'ping';
+function control(data: unknown): Control['t'] | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const t = (data as { t?: unknown }).t;
+  return t === 'ping' || t === 'busy' ? t : null;
 }
 
 /** Opens a PeerJS link. Loads the library lazily so AI-only visitors never download it. */
@@ -94,13 +100,28 @@ export async function openPeerLink(role: Role, code: string, events: LinkEvents)
       events.onStatus('channel-open');
     });
     c.on('data', (data: unknown) => {
-      if (conn !== c || isPing(data)) return;
+      if (conn !== c) return;
+      const kind = control(data);
+      if (kind === 'ping') return;
+      if (kind === 'busy') {
+        events.onError({ kind: 'room-full', message: 'Room is full' });
+        c.close();
+        return;
+      }
       const msg = decode(data);
       if (msg) events.onMessage(msg);
     });
     c.on('close', () => dropped(c));
     c.on('error', (err) => {
       if (conn === c) events.onError({ kind: 'webrtc', message: err.message });
+    });
+  };
+
+  // The room seats two; anyone else is told so and shown the door.
+  const turnAway = (c: DataConnection) => {
+    c.on('open', () => {
+      void c.send(BUSY);
+      window.setTimeout(() => c.close(), BUSY_CLOSE_MS);
     });
   };
 
@@ -117,8 +138,9 @@ export async function openPeerLink(role: Role, code: string, events: LinkEvents)
     else dial();
   });
   peer.on('connection', (c) => {
-    if (role === 'host') attach(c);
-    else c.close();
+    if (role !== 'host') c.close();
+    else if (conn?.open) turnAway(c);
+    else attach(c);
   });
   peer.on('disconnected', () => {
     if (closed) return;

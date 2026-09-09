@@ -157,6 +157,21 @@ describe('friend mode: lobby and handshake', () => {
     expect(t.guest.net?.status).toBe('error');
     expect(t.guest.message).toContain('K7Q2ZD');
   });
+
+  it('tells a third player the room is full, but not a guest who is reconnecting', () => {
+    const t = new Table();
+    t.g({ type: 'link-error', error: { kind: 'room-full', message: 'x' } });
+    expect(t.guest.net?.status).toBe('error');
+    expect(t.guest.message).toMatch(/already has two players/);
+
+    const u = new Table();
+    u.connect();
+    u.g({ type: 'link-status', status: 'channel-closed' });
+    expect(u.guest.net?.status).toBe('reconnecting');
+    // The host may not have noticed the drop yet and still turns the redial away.
+    u.g({ type: 'link-error', error: { kind: 'room-full', message: 'x' } });
+    expect(u.guest.net?.status).toBe('reconnecting');
+  });
 });
 
 describe('friend mode: battle', () => {

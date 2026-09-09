@@ -553,6 +553,7 @@ function applyLinkError(state: AppState, error: LinkError): AppState {
   const text: Record<LinkError['kind'], string> = {
     'room-taken': 'That room code is already in use. Try a new code.',
     'room-not-found': `No open game found for code ${net.code}. Check the code or ask your friend to re-host.`,
+    'room-full': `Room ${net.code} already has two players. Ask your friend for a new code.`,
     network: 'Could not reach the matchmaking server. Check your connection and try again.',
     webrtc:
       'Could not open a direct connection between your browsers (a strict network may be blocking it).',
