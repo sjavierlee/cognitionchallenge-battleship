@@ -18,7 +18,7 @@ export function iceServers(env: IceEnv = import.meta.env): RTCIceServer[] {
   const urls = str(env.VITE_TURN_URLS)
     .split(',')
     .map((u) => u.trim())
-    .filter((u) => /^turns?:/.test(u));
+    .filter((u) => /^turns?:/i.test(u));
   if (urls.length > 0) {
     servers.push({
       urls,
