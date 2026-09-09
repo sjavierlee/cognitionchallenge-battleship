@@ -27,7 +27,7 @@ import { appReducer, initialAppState, type AppAction, type AppState } from './ap
 import { Board, type LastShot, type Preview } from './Board';
 import { ConnectionBanner } from './ConnectionBanner';
 import { DifficultyPicker } from './DifficultyPicker';
-import { GameOver } from './GameOver';
+import { GameOver, ReviewBar } from './GameOver';
 import { Home } from './Home';
 import { IconToggle } from './IconToggle';
 import { AnchorIcon, MoonIcon, SpeakerOffIcon, SpeakerOnIcon, SunIcon } from './icons';
@@ -74,6 +74,8 @@ export function App({
   const [pendingCode, setPendingCode] = useState<string | null>(() =>
     roomFromHash(window.location.hash),
   );
+  /** Game whose summary was dismissed to look at the boards; stale ids fall out on the next game. */
+  const [reviewingGame, setReviewingGame] = useState<number | null>(null);
   const { theme, toggleTheme } = useTheme();
   const recordedFor = useRef<number>(-1);
   const playedSeq = useRef<number>(0);
@@ -85,6 +87,7 @@ export function App({
   const playerTurn = game.phase === 'player-turn';
   const opponentTurn = game.phase === 'opponent-turn';
   const over = game.phase === 'game-over';
+  const reviewing = over && reviewingGame === gameId;
   const aiTurn = mode === 'ai' && opponentTurn;
 
   const graceLeft = useP2P(net, dispatch, { factory: linkFactory, graceMs: reconnectGraceMs });
@@ -191,6 +194,11 @@ export function App({
   );
 
   const goHome = useCallback(() => dispatch({ type: 'go-home' }), []);
+  const playAgain = useCallback(
+    () => dispatch({ type: friend ? 'rematch' : 'play-again' }),
+    [friend],
+  );
+  const closeSummary = useCallback(() => setReviewingGame(gameId), [gameId]);
 
   const preview: Preview = useMemo(() => {
     if (!placing || !hover || !selectedShip) return null;
@@ -223,7 +231,13 @@ export function App({
   const canFire = playerTurn && linkUp && !waitingOnResult;
 
   const opponentBadge = opponentTurn ? (friend ? `${enemyName}'s turn` : 'Incoming…') : undefined;
-  const playerBadge = playerTurn ? (waitingOnResult ? 'Firing…' : 'Your turn') : undefined;
+  const playerBadge = playerTurn
+    ? waitingOnResult
+      ? 'Firing…'
+      : 'Your turn'
+    : reviewing && isFleetComplete(game.opponent)
+      ? 'Revealed'
+      : undefined;
 
   return (
     <div className="app">
@@ -294,6 +308,17 @@ export function App({
               graceSeconds={graceLeft}
               onClaimWin={() => dispatch({ type: 'claim-win' })}
               onLeave={goHome}
+            />
+          )}
+
+          {reviewing && (
+            <ReviewBar
+              game={game}
+              net={friend ? net : null}
+              enemyName={friend ? enemyName : `The ${difficultyLabel} AI`}
+              onPlayAgain={playAgain}
+              onHome={goHome}
+              onSummary={() => setReviewingGame(null)}
             />
           )}
 
@@ -369,7 +394,8 @@ export function App({
                   title={enemyTitle}
                   ariaLabel="Enemy board"
                   board={game.opponent}
-                  showShips={false}
+                  showShips={reviewing}
+                  revealed={reviewing}
                   showFleet
                   disabled={!canFire}
                   active={playerTurn}
@@ -382,14 +408,15 @@ export function App({
             </main>
           )}
 
-          {over && (
+          {over && !reviewing && (
             <GameOver
               game={game}
               difficulty={difficulty}
               record={record}
               net={friend ? net : null}
-              onPlayAgain={() => dispatch({ type: friend ? 'rematch' : 'play-again' })}
+              onPlayAgain={playAgain}
               onHome={goHome}
+              onClose={closeSummary}
             />
           )}
         </>

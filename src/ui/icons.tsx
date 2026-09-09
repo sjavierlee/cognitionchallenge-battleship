@@ -122,6 +122,14 @@ export function CheckIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function CloseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M5.5 5.5l9 9M14.5 5.5l-9 9" />
+    </Icon>
+  );
+}
+
 export function ShuffleIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <Icon {...props}>

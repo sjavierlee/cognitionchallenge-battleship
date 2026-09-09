@@ -1,8 +1,55 @@
-import type { CSSProperties } from 'react';
+import { useEffect, type CSSProperties } from 'react';
 import { DIFFICULTIES, type Difficulty } from '../ai/huntTarget';
+import { isFleetComplete } from '../engine/board';
 import type { GameState } from '../engine/types';
 import type { GameRecord } from '../storage/record';
 import type { NetState } from './appState';
+import { CloseIcon } from './icons';
+
+type ActionProps = {
+  net: NetState | null;
+  onPlayAgain: () => void;
+  onHome: () => void;
+  /** Overlay buttons are larger and take focus; the review bar's are regular size. */
+  prominent?: boolean;
+};
+
+/** Rematch / Play again and Back to home, shared by the overlay and the post-game review bar. */
+export function GameOverActions({ net, onPlayAgain, onHome, prominent = false }: ActionProps) {
+  const friend = net !== null;
+  const connected = friend && net.status === 'connected';
+  const label = !friend
+    ? 'Play again'
+    : net.rematchMine
+      ? `Waiting for ${net.opponent?.name ?? 'your friend'}…`
+      : net.rematchTheirs
+        ? 'Accept rematch'
+        : 'Rematch';
+  const big = prominent ? ' btn--big' : '';
+  return (
+    <>
+      {(!friend || connected) && (
+        <button
+          type="button"
+          className={`btn btn--primary${big}`}
+          onClick={onPlayAgain}
+          disabled={friend && net.rematchMine}
+          autoFocus={prominent}
+        >
+          {label}
+        </button>
+      )}
+      <button
+        type="button"
+        className={`btn${big}${friend && !connected ? ' btn--primary' : ''}`}
+        onClick={onHome}
+        autoFocus={prominent && friend && !connected}
+      >
+        Back to home
+      </button>
+    </>
+  );
+}
 
 type Props = {
   game: GameState;
@@ -11,9 +58,11 @@ type Props = {
   net: NetState | null;
   onPlayAgain: () => void;
   onHome: () => void;
+  /** Dismisses the summary to look at the boards with the enemy fleet revealed. */
+  onClose: () => void;
 };
 
-export function GameOver({ game, difficulty, record, net, onPlayAgain, onHome }: Props) {
+export function GameOver({ game, difficulty, record, net, onPlayAgain, onHome, onClose }: Props) {
   const won = game.winner === 'player';
   const mine = game.log.filter((s) => s.by === 'player');
   const hits = mine.filter((s) => s.outcome !== 'miss').length;
@@ -39,17 +88,27 @@ export function GameOver({ game, difficulty, record, net, onPlayAgain, onHome }:
 
   const connected = friend && net.status === 'connected';
   const reconnecting = friend && (net.status === 'reconnecting' || net.status === 'handshake');
-  const rematchLabel = !friend
-    ? 'Play again'
-    : net.rematchMine
-      ? `Waiting for ${net.opponent?.name ?? 'your friend'}…`
-      : net.rematchTheirs
-        ? 'Accept rematch'
-        : 'Rematch';
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
       <div className={`gameover gameover--${won ? 'win' : 'lose'}`}>
+        <button
+          type="button"
+          className="icon-btn gameover-close"
+          onClick={onClose}
+          aria-label="Close summary and reveal the enemy fleet"
+          title="Reveal the enemy fleet"
+        >
+          <CloseIcon />
+        </button>
         <p className="gameover-kicker stagger" style={{ '--i': 0 } as CSSProperties}>
           {kicker}
         </p>
@@ -98,26 +157,47 @@ export function GameOver({ game, difficulty, record, net, onPlayAgain, onHome }:
           </p>
         )}
         <div className="gameover-actions stagger" style={{ '--i': 5 } as CSSProperties}>
-          {(!friend || connected) && (
-            <button
-              type="button"
-              className="btn btn--primary btn--big"
-              onClick={onPlayAgain}
-              disabled={friend && net.rematchMine}
-              autoFocus
-            >
-              {rematchLabel}
-            </button>
-          )}
-          <button
-            type="button"
-            className={`btn btn--big${friend && !connected ? ' btn--primary' : ''}`}
-            onClick={onHome}
-            autoFocus={friend && !connected}
-          >
-            Back to home
-          </button>
+          <GameOverActions net={net} onPlayAgain={onPlayAgain} onHome={onHome} prominent />
         </div>
+        <p className="gameover-hint stagger" style={{ '--i': 6 } as CSSProperties}>
+          <button type="button" className="link" onClick={onClose}>
+            Close to see where {friend ? `${enemy}'s` : 'the enemy'} ships were
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+type ReviewProps = {
+  game: GameState;
+  net: NetState | null;
+  enemyName: string;
+  onPlayAgain: () => void;
+  onHome: () => void;
+  /** Re-opens the summary overlay. */
+  onSummary: () => void;
+};
+
+/** Sits above the boards once the summary is dismissed, keeping the end-of-game actions handy. */
+export function ReviewBar({ game, net, enemyName, onPlayAgain, onHome, onSummary }: ReviewProps) {
+  const won = game.winner === 'player';
+  const revealed = isFleetComplete(game.opponent);
+  const detail = revealed
+    ? `${enemyName}'s fleet is revealed on their board.`
+    : `${enemyName} has not revealed their fleet — only the ships you sank are shown.`;
+  return (
+    <div className={`banner review review--${won ? 'win' : 'lose'}`} role="status">
+      <span>
+        <strong className="review-outcome">{won ? 'Victory' : 'Defeat'}</strong>
+        {' · '}
+        {detail}
+      </span>
+      <div className="banner-actions">
+        <button type="button" className="btn btn--ghost" onClick={onSummary}>
+          Summary
+        </button>
+        <GameOverActions net={net} onPlayAgain={onPlayAgain} onHome={onHome} />
       </div>
     </div>
   );

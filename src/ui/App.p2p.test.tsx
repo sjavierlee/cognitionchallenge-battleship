@@ -1,7 +1,9 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { coordLabel } from '../engine/coords';
 import { seededRng } from '../engine/rng';
+import type { Coord } from '../engine/types';
 import type { Link, LinkErrorKind, LinkEvents, LinkFactory, Role } from '../net/link';
 import { loadRecord } from '../storage/record';
 import { App } from './App';
@@ -195,6 +197,62 @@ describe('friend mode UI', () => {
     link.peerAct({ type: 'player-fire', at: { row: 9, col: 9 } });
     expect(screen.getByText('Your turn')).toBeInTheDocument();
     expect(cell('Enemy board', 'A1')).toBeEnabled();
+  });
+
+  it('reveals the winner fleet to the loser once the summary is closed, with rematch still on offer', async () => {
+    const user = userEvent.setup();
+    const link = fakeLink('Bob');
+    render(<App linkFactory={link.factory} rng={seededRng(3)} />);
+    await user.click(screen.getByRole('button', { name: /host a game/i }));
+    link.connect();
+    await user.click(screen.getByRole('button', { name: /randomize/i }));
+    await user.click(screen.getByRole('button', { name: /^ready$/i }));
+    link.peerAct({ type: 'randomize' });
+    link.peerAct({ type: 'ready' });
+
+    // We fire only at Bob's open water; Bob works through every one of our ship cells.
+    const bobBoard = link.peer.game.player;
+    const water: Coord[] = [];
+    const mine: Coord[] = [];
+    bobBoard.cells.forEach((row, r) =>
+      row.forEach((state, c) => {
+        if (state === 'empty') water.push({ row: r, col: c });
+      }),
+    );
+    const ownRegion = screen.getByRole('region', { name: 'Your board' });
+    for (const btn of within(ownRegion).getAllByRole('button', { name: /, ship$/ })) {
+      const label = btn.getAttribute('aria-label')?.split(',')[0] ?? '';
+      mine.push({ row: Number(label.slice(1)) - 1, col: label.charCodeAt(0) - 65 });
+    }
+    expect(mine).toHaveLength(17);
+    for (const [i, target] of mine.entries()) {
+      await user.click(cell('Enemy board', coordLabel(water[i])));
+      link.peerAct({ type: 'player-fire', at: target });
+    }
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /defeat/i })).toBeInTheDocument();
+    const enemyRegion = screen.getByRole('region', { name: 'Enemy board' });
+    expect(enemyRegion.querySelectorAll('.board-ship')).toHaveLength(0);
+
+    await user.click(within(dialog).getByRole('button', { name: /close summary/i }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByText(/bob's fleet is revealed/i)).toBeInTheDocument();
+    expect(enemyRegion.querySelectorAll('.board-ship')).toHaveLength(5);
+    for (const ship of bobBoard.ships) {
+      const label = coordLabel(ship.cells[0]);
+      expect(cell('Enemy board', label)).toHaveAccessibleName(`${label}, ship`);
+    }
+    // Our misses are still on the grid.
+    expect(cell('Enemy board', coordLabel(water[0]))).toHaveAccessibleName(/, miss$/);
+
+    // Rematch and Back to home are still on offer from the review bar.
+    expect(screen.getByRole('button', { name: /back to home/i })).toBeEnabled();
+    await user.click(screen.getByRole('button', { name: /^rematch$/i }));
+    expect(screen.getByRole('button', { name: /waiting for bob/i })).toBeDisabled();
+    link.peerAct({ type: 'rematch' });
+    expect(screen.getByRole('button', { name: /^ready$/i })).toBeInTheDocument();
+    expect(screen.queryByText(/fleet is revealed/i)).not.toBeInTheDocument();
   });
 
   it('rejects a malformed code and explains connection errors', async () => {

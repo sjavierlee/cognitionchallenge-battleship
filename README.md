@@ -22,6 +22,9 @@ can enter an optional display name; otherwise you're _Captain_.
 4. **Win** by sinking all five enemy ships before the AI sinks yours. Your
    win/loss record (overall, per difficulty, and vs friends) is saved in
    `localStorage`.
+5. **Review** — close the game-over summary (× or <kbd>Esc</kbd>) to see
+   where the enemy ships were; _Play again_ and _Back to home_ stay in a bar
+   above the boards, and _Summary_ brings the overlay back.
 
 ### Versus a friend
 
@@ -34,7 +37,8 @@ can enter an optional display name; otherwise you're _Captain_.
    results travel over the wire, so neither side ever sees the other's board
    until a ship is sunk.
 4. **Rematch** from the game-over screen keeps the room open and swaps who
-   fires first.
+   fires first. The winner's fleet is sent to the loser at game over, so
+   closing the summary reveals it on _Enemy waters_ just like versus the AI.
 
 If the connection drops mid-game you'll see _Reconnecting…_ for 15 seconds
 while the guest redials. After that (or if your opponent leaves) you can
