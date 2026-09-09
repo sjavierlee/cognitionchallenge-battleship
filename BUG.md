@@ -448,6 +448,53 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   and the next redial gets through once the heartbeat frees the seat. Tests
   cover both the error and the ignored-while-reconnecting paths.
 
+### 32. Friends on different networks could not connect at all ("Could not open a direct connection") — Fixed (relay is opt-in)
+
+- **Description (reported by the user after deploying):** A real two-person
+  test on the production site failed on both ends with "Could not open a
+  direct connection between your browsers (a strict network may be blocking
+  it)". Every earlier verification had both browsers on the same machine, so
+  NAT traversal was never actually exercised.
+- **Root cause:** We relied on PeerJS's default `RTCConfiguration`, which
+  lists Google STUN plus TURN relays at `eu-0.turn.peerjs.com` /
+  `us-0.turn.peerjs.com` (user `peerjs`). Those hostnames no longer resolve
+  (`NXDOMAIN`), so in practice the game shipped with STUN only. STUN is enough
+  when at least one side has a cone NAT; when both sides are behind symmetric
+  NATs (mobile carriers, many home routers, VPNs, corporate networks) ICE has
+  no relay to fall back on and fails. That is not an edge case for a game
+  meant to be played over the internet.
+- **Fix:** `net/ice.ts` builds our own ICE server list: Google + Cloudflare
+  STUN always, plus a TURN relay from `VITE_TURN_URLS` /
+  `VITE_TURN_USERNAME` / `VITE_TURN_CREDENTIAL` when the build provides one
+  (comma-separated URLs; `turns:…?transport=tcp` recommended so port-443-only
+  networks work). `peer.ts` passes it as PeerJS `config`, replacing the dead
+  defaults. A relay still has to be provisioned — there is no free, keyless
+  public TURN we could verify as alive (Open Relay was unreachable too) — so
+  the README documents how to plug one in. Unit tests cover the env parsing.
+
+### 33. A failed join attempt killed the host's room — Fixed
+
+- **Description:** In the same incident the _host_ also ended up on "Could
+  not connect." with only "Back to home" (see the screenshot in the report),
+  even though nothing was wrong on the host's side and the room was still
+  registered with the broker. The guest could not simply retry because the
+  host had to re-host and share a new code.
+- **Root cause:** `applyLinkError` treated every `webrtc` link error as
+  fatal (`status: 'error'`), regardless of role or whether an opponent had
+  even completed the handshake. PeerJS reports an ICE failure as a
+  connection-level `negotiation-failed` error, which `peer.ts` maps to
+  `webrtc`, so one guest's unreachable network put the host into the dead
+  state. The `channel-closed` that follows was then ignored because `error`
+  is terminal.
+- **Fix:** A `webrtc` error is scoped to the attempt it belongs to. A host
+  without a seated opponent stays `waiting` (outbox cleared) with "A friend
+  tried to join but the browsers could not connect directly. Your room is
+  still open — ask them to try again." A peer with an opponent already seated
+  ignores the error and lets the ensuing `channel-closed` start the normal
+  reconnect grace. Only a guest that never got through sees `error`, with the
+  existing **Try again** button and a message that now hints at VPNs / mobile
+  carriers. Three reducer tests cover the host, guest and mid-game paths.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only

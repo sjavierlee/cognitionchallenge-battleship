@@ -1,16 +1,22 @@
 import type { DataConnection, Peer, PeerError, PeerErrorType, PeerOptions } from 'peerjs';
+import { iceServers } from './ice';
 import type { Link, LinkError, LinkErrorKind, LinkEvents, Role } from './link';
 import { decode, type NetMessage } from './protocol';
 import { peerIdForRoom } from './roomCode';
 
-/** Broker settings; unset means the public PeerJS cloud (`0.peerjs.com`). */
-function brokerOptions(): PeerOptions {
+/**
+ * Broker settings (unset means the public PeerJS cloud, `0.peerjs.com`) and our own ICE servers.
+ * PeerJS's built-in `config` is replaced rather than merged: its default TURN hosts
+ * (`*.turn.peerjs.com`) no longer resolve, so it effectively ships with STUN only.
+ */
+function peerOptions(): PeerOptions {
+  const options: PeerOptions = { config: { iceServers: iceServers() } };
   const host = import.meta.env.VITE_PEER_HOST as string | undefined;
-  if (!host) return {};
-  const port = Number(import.meta.env.VITE_PEER_PORT ?? 443);
+  if (!host) return options;
   return {
+    ...options,
     host,
-    port,
+    port: Number(import.meta.env.VITE_PEER_PORT ?? 443),
     path: (import.meta.env.VITE_PEER_PATH as string | undefined) ?? '/',
     secure: import.meta.env.VITE_PEER_SECURE !== 'false',
   };
@@ -52,8 +58,8 @@ function control(data: unknown): Control['t'] | null {
 export async function openPeerLink(role: Role, code: string, events: LinkEvents): Promise<Link> {
   const { Peer } = await import('peerjs');
   const hostId = peerIdForRoom(code);
-  const peer: Peer =
-    role === 'host' ? new Peer(hostId, brokerOptions()) : new Peer(brokerOptions());
+  const options = peerOptions();
+  const peer: Peer = role === 'host' ? new Peer(hostId, options) : new Peer(options);
 
   let conn: DataConnection | null = null;
   let closed = false;

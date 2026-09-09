@@ -172,6 +172,43 @@ describe('friend mode: lobby and handshake', () => {
     u.g({ type: 'link-error', error: { kind: 'room-full', message: 'x' } });
     expect(u.guest.net?.status).toBe('reconnecting');
   });
+
+  it('keeps the host room open when a join attempt fails to negotiate WebRTC', () => {
+    const t = new Table();
+    t.h({ type: 'link-status', status: 'waiting' });
+    // The guest's channel may have opened on the host side before ICE gave up.
+    t.h({ type: 'link-status', status: 'channel-open' });
+    expect(t.host.net?.status).toBe('handshake');
+
+    t.h({ type: 'link-error', error: { kind: 'webrtc', message: 'Negotiation failed' } });
+    expect(t.host.net?.status).toBe('waiting');
+    expect(t.host.net?.outbox).toEqual([]);
+    expect(t.host.message).toMatch(/room is still open/);
+
+    t.h({ type: 'link-status', status: 'channel-closed' });
+    expect(t.host.net?.status).toBe('waiting');
+
+    // The next guest can still connect normally.
+    t.connect();
+    expect(t.host.net?.status).toBe('connected');
+    expect(t.guest.net?.status).toBe('connected');
+  });
+
+  it('lets the guest retry after a failed WebRTC negotiation', () => {
+    const t = new Table();
+    t.g({ type: 'link-error', error: { kind: 'webrtc', message: 'Negotiation failed' } });
+    expect(t.guest.net?.status).toBe('error');
+    expect(t.guest.message).toMatch(/could not open a direct connection/i);
+  });
+
+  it('treats a WebRTC error with an opponent seated as a drop, not a fatal error', () => {
+    const t = new Table();
+    t.connect();
+    t.h({ type: 'link-error', error: { kind: 'webrtc', message: 'Negotiation failed' } });
+    expect(t.host.net?.status).toBe('connected');
+    t.h({ type: 'link-status', status: 'channel-closed' });
+    expect(t.host.net?.status).toBe('reconnecting');
+  });
 });
 
 describe('friend mode: battle', () => {
