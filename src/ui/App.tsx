@@ -288,7 +288,7 @@ export function App({
             {message}
           </p>
 
-          {friend && !placing && (
+          {friend && !placing && !over && (
             <ConnectionBanner
               net={net}
               graceSeconds={graceLeft}

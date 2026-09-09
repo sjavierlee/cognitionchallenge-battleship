@@ -14,7 +14,7 @@ export type LinkStatus =
   'registering' | 'waiting' | 'dialing' | 'channel-open' | 'channel-closed' | 'broker-lost';
 
 export type LinkErrorKind =
-  'room-taken' | 'room-not-found' | 'network' | 'webrtc' | 'unsupported' | 'unknown';
+  'room-taken' | 'room-not-found' | 'room-full' | 'network' | 'webrtc' | 'unsupported' | 'unknown';
 
 export type LinkError = { kind: LinkErrorKind; message: string };
 

@@ -361,6 +361,93 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   ("Devin B fires first"). Also fixed "1 shots" pluralisation in the shot log
   and game-over copy spotted in the same run.
 
+### 28. Host room went dead if the guest left during placement — Fixed
+
+- **Description (found in the post-merge audit):** If the guest closed their tab,
+  reloaded, or lost their connection for 15 s while both players were still
+  placing ships, the host was stuck on "Bob left the game" / "Bob did not come
+  back" with **Leave** as the only way out. A guest who reloaded after
+  pressing Ready was even reported as having "left (their page was reloaded)"
+  while the host could still see them connected. Nothing had actually been
+  played yet, so there was no reason to end the room.
+- **Root cause:** The `leave` message and `grace-expired` action always moved
+  the room to `left`/`lost`, and a `hello` from a new session was treated as a
+  mid-game reload whenever the previous guest had been ready. Those rules were
+  written for the battle, where losing the opponent really does end the game,
+  and never distinguished the lobby.
+- **Fix:** Added `reopenRoom`: before the battle, a departed opponent (explicit
+  leave, or grace expiry after a drop) returns the host to `waiting` with the
+  opponent cleared and both ready flags reset, keeping the placed fleet and the
+  same room code; the guest is told the room closed. A `hello` from a new
+  session during placement is now always a fresh join (both sides ready up
+  again), and only mid-battle does it mean a forfeit. Regression tests cover a
+  ready host getting a new guest, a guest reload after Ready, leave during
+  placement, and grace expiry during placement.
+
+### 29. A brief connection drop on the results screen killed the rematch — Fixed
+
+- **Description (found in the post-merge audit):** After a game ended, any
+  `channel-closed` — including the heartbeat timing out during a 7 s network
+  hiccup — was treated as the opponent leaving. Rematch was hidden, the note
+  said "has left", and the guest stopped redialing, so the room was
+  unrecoverable even though both players were still sitting on the overlay.
+  The hidden `ConnectionBanner` also rendered a **Claim win** button behind
+  the overlay that did nothing, because `claim-win` is only valid mid-battle.
+- **Root cause:** `channel-closed` special-cased `game-over` to jump straight
+  to `left`, bypassing the 15 s grace that mid-game drops get; and the banner
+  was rendered for every non-placement phase.
+- **Fix:** A drop at game over now enters `reconnecting` like any other drop
+  (the guest keeps redialing, the resumed `hello` re-sends a pending rematch
+  request), and `grace-expired` at game over settles to `left` rather than
+  `lost` so no forfeit is offered. The banner is only rendered during the
+  battle; the game-over note shows "Reconnecting to …" while the grace timer
+  runs. Tests cover the reconnect-with-pending-rematch and grace-expiry paths.
+
+### 30. A peer returning after a claimed forfeit stayed in the battle — Fixed
+
+- **Description (found by the recorded two-browser run of #28–29):** Guest's
+  tab froze for ~30 s; the host waited out the grace, pressed **Claim win** and
+  got the forfeit Victory overlay (record 5W–5L). When the guest's tab woke
+  up it redialed, the host greeted it with "Devin A is back. Carry on!", and
+  the guest was left on **Your turn** with a live board while the host was
+  already on the results screen — the two clients disagreed on whether the
+  game existed.
+- **Root cause:** The same-session `hello` path only replayed a pending shot
+  and rematch request; nothing in the protocol could tell a returning peer
+  that its absence had already been claimed as a win, so its local battle
+  never ended.
+- **Fix:** New `forfeit` protocol message. On a resumed `hello`, a host whose
+  game is over with `forfeit: true` queues `{ t: 'forfeit' }`; the receiver,
+  if still in battle, moves to `game-over` as the loser, clears its pending
+  shot and shows "… claimed the win by forfeit while you were disconnected."
+  A `forfeit` received outside the battle is ignored. Both sides then sit on
+  the results screen and Rematch works as usual. Tests cover the resume and
+  the ignore paths.
+
+### 31. A third browser opening an occupied room evicted the guest — Fixed
+
+- **Description (flagged by Devin Review on #28):** The host accepted every
+  incoming PeerJS connection and closed the current one to make room. If a
+  third person opened the invite link during placement, the seated guest was
+  cut off, redialed, and cut the newcomer off in turn — two guests could keep
+  ejecting each other and the host's Ready state reset each time. (On `main`
+  the same thing happened whenever the seated guest had not yet pressed
+  Ready; #28 extended it to the ready case by treating any new session during
+  placement as a fresh join.)
+- **Root cause:** `peer.ts` `attach()` unconditionally replaced `conn`, and
+  the reducer has no way to know whether the previous opponent actually
+  departed — it only ever sees the new `hello`.
+- **Fix:** The link enforces the two-seat rule itself. While the host's data
+  channel is open, an extra connection is answered with a link-level
+  `{ t: 'busy' }` control message (like the heartbeat `ping`, it never
+  reaches the game protocol) and closed; the seated guest is untouched. The
+  newcomer surfaces it as a `room-full` link error: "Room K7Q2ZD already has
+  two players. Ask your friend for a new code." A guest that is legitimately
+  redialing while the host has not yet noticed its drop may also be told
+  `busy`; that is ignored while `reconnecting` (like other transient errors)
+  and the next redial gets through once the heartbeat frees the seat. Tests
+  cover both the error and the ignored-while-reconnecting paths.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only

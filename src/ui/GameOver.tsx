@@ -26,16 +26,19 @@ export function GameOver({ game, difficulty, record, net, onPlayAgain, onHome }:
   const forfeit = friend && net.forfeit;
 
   const kicker = forfeit
-    ? `${enemy} left · Friend game`
+    ? `${won ? `${enemy} left` : 'You were away'} · Friend game`
     : `${won ? 'Enemy fleet destroyed' : 'Fleet lost'} · ${friend ? 'Friend game' : `${label} AI`}`;
   const shots = (n: number) => `${n} ${n === 1 ? 'shot' : 'shots'}`;
   const sub = forfeit
-    ? 'The win is yours by forfeit.'
+    ? won
+      ? 'The win is yours by forfeit.'
+      : `${enemy} claimed the win by forfeit while you were disconnected.`
     : won
       ? `You sank the entire enemy fleet in ${shots(mine.length)}.`
       : `${enemy} sank your fleet in ${shots(theirs.length)}.`;
 
   const connected = friend && net.status === 'connected';
+  const reconnecting = friend && (net.status === 'reconnecting' || net.status === 'handshake');
   const rematchLabel = !friend
     ? 'Play again'
     : net.rematchMine
@@ -89,7 +92,9 @@ export function GameOver({ game, difficulty, record, net, onPlayAgain, onHome }:
         )}
         {friend && !connected && (
           <p className="gameover-note stagger" style={{ '--i': 4 } as CSSProperties}>
-            {net.opponent?.name ?? 'Your friend'} has left, so a rematch is not available.
+            {reconnecting
+              ? `Reconnecting to ${net.opponent?.name ?? 'your friend'}…`
+              : `${net.opponent?.name ?? 'Your friend'} has left, so a rematch is not available.`}
           </p>
         )}
         <div className="gameover-actions stagger" style={{ '--i': 5 } as CSSProperties}>

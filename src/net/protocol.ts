@@ -12,6 +12,8 @@ export type NetMessage =
   | { t: 'fire'; seq: number; at: Coord }
   | { t: 'result'; seq: number; at: Coord; outcome: Outcome; sunk?: SunkInfo; gameOver: boolean }
   | { t: 'rematch' }
+  /** Sent to a returning peer whose absence was already claimed as a win. */
+  | { t: 'forfeit' }
   | { t: 'leave' };
 
 export type MessageType = NetMessage['t'];
@@ -50,6 +52,8 @@ export function decode(raw: unknown): NetMessage | null {
       return { t: 'ready' };
     case 'rematch':
       return { t: 'rematch' };
+    case 'forfeit':
+      return { t: 'forfeit' };
     case 'leave':
       return { t: 'leave' };
     case 'fire': {

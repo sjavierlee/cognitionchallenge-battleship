@@ -459,10 +459,10 @@ export function appReducer(state: AppState, action: AppAction, rng: Rng = defaul
       if (!net || !net.opponent || (net.status !== 'reconnecting' && net.status !== 'handshake')) {
         return state;
       }
-      return withNet(
-        { ...state, message: `${net.opponent?.name ?? 'Your friend'} did not come back.` },
-        { status: 'lost' },
-      );
+      const gone = `${net.opponent.name} did not come back.`;
+      if (game.phase === 'placement') return reopenRoom(state, net, gone);
+      // Nothing to forfeit once the game is over; they are simply gone.
+      return withNet({ ...state, message: gone }, { status: inBattle(game) ? 'lost' : 'left' });
     }
 
     case 'peer-message':
@@ -471,6 +471,29 @@ export function appReducer(state: AppState, action: AppAction, rng: Rng = defaul
     case 'outbox-sent':
       return withNet(state, { outbox: state.net?.outbox.slice(action.count) ?? [] });
   }
+}
+
+/**
+ * The opponent is gone before the battle started. Nothing has been exchanged yet, so the host
+ * simply waits for the next guest; the guest's room no longer exists.
+ */
+function reopenRoom(state: AppState, net: NetState, why: string): AppState {
+  if (net.role === 'guest') {
+    return withNet({ ...state, message: why }, { status: 'left', outbox: [] });
+  }
+  return {
+    ...state,
+    net: {
+      ...net,
+      status: 'waiting',
+      opponent: null,
+      myReady: false,
+      theirReady: false,
+      outbox: [],
+    },
+    selectedShip: isFleetComplete(state.game.player) ? null : nextUnplaced(state.game),
+    message: `${why} Your room is still open — share the code again.`,
+  };
 }
 
 function rematchHint(net: NetState): string {
@@ -513,12 +536,6 @@ function applyLinkStatus(state: AppState, status: LinkStatus): AppState {
           outbox: [],
         });
       }
-      if (state.game.phase === 'game-over') {
-        return withNet(
-          { ...state, message: `${net.opponent.name} left the game.` },
-          { status: 'left', outbox: [] },
-        );
-      }
       return withNet(
         { ...state, message: `Connection lost. Reconnecting to ${net.opponent.name}…` },
         { status: 'reconnecting', outbox: [] },
@@ -536,6 +553,7 @@ function applyLinkError(state: AppState, error: LinkError): AppState {
   const text: Record<LinkError['kind'], string> = {
     'room-taken': 'That room code is already in use. Try a new code.',
     'room-not-found': `No open game found for code ${net.code}. Check the code or ask your friend to re-host.`,
+    'room-full': `Room ${net.code} already has two players. Ask your friend for a new code.`,
     network: 'Could not reach the matchmaking server. Check your connection and try again.',
     webrtc:
       'Could not open a direct connection between your browsers (a strict network may be blocking it).',
@@ -566,20 +584,31 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
           next = queue(next, { t: 'fire', seq: next.pendingFire.seq, at: next.pendingFire.at });
         }
         if (game.phase === 'placement' && next.myReady) next = queue(next, { t: 'ready' });
+        // We may have taken the win while they were away; they still think the battle is on.
+        const claimed = game.phase === 'game-over' && next.forfeit && game.winner === 'player';
+        if (claimed) next = queue(next, { t: 'forfeit' });
         if (game.phase === 'game-over' && next.rematchMine) next = queue(next, { t: 'rematch' });
-        return { ...state, net: next, message: `${msg.name} is back. Carry on!` };
+        return {
+          ...state,
+          net: next,
+          message: claimed
+            ? `${msg.name} is back, but the game already ended by forfeit.`
+            : `${msg.name} is back. Carry on!`,
+        };
       }
-      if (net.opponent && (inBattle(game) || (game.phase === 'placement' && net.theirReady))) {
+      if (net.opponent && inBattle(game)) {
         // A different session mid-game means they reloaded and lost their board.
         return withNet(
           { ...state, message: `${net.opponent.name} left the game (their page was reloaded).` },
           { status: 'left' },
         );
       }
+      // Before the battle nothing has been exchanged: whoever this is, both sides ready up afresh.
       const joined: NetState = {
         ...net,
         status: 'connected',
         opponent,
+        myReady: false,
         theirReady: false,
         rematchMine: false,
         rematchTheirs: false,
@@ -594,9 +623,8 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
       return {
         ...state,
         net: joined,
-        message: net.myReady
-          ? `${msg.name} joined. Waiting for them to place their fleet…`
-          : `${msg.name} joined! Place your fleet, then press Ready.`,
+        selectedShip: isFleetComplete(game.player) ? null : nextUnplaced(game),
+        message: `${msg.name} joined! Place your fleet, then press Ready.`,
       };
     }
 
@@ -680,13 +708,22 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
       return { ...state, net: asked, message: `${name} wants a rematch!` };
     }
 
+    case 'forfeit': {
+      if (net.status !== 'connected' || !inBattle(game)) return state;
+      const name = net.opponent?.name ?? 'Your friend';
+      return {
+        ...state,
+        net: { ...net, forfeit: true, pendingFire: null },
+        game: { ...game, phase: 'game-over', winner: 'opponent' },
+        message: `You were away too long — ${name} claimed the win by forfeit.`,
+      };
+    }
+
     case 'leave': {
       if (net.status === 'left' || net.status === 'lost') return state;
-      const name = net.opponent?.name ?? 'Your friend';
-      return withNet(
-        { ...state, message: `${name} left the game.` },
-        { status: 'left', outbox: [] },
-      );
+      const why = `${net.opponent?.name ?? 'Your friend'} left the game.`;
+      if (game.phase === 'placement') return reopenRoom(state, net, why);
+      return withNet({ ...state, message: why }, { status: 'left', outbox: [] });
     }
   }
 }
