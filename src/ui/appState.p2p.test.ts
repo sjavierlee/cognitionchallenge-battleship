@@ -339,6 +339,46 @@ describe('friend mode: disconnects', () => {
     expect(t.host.net?.forfeit).toBe(true);
   });
 
+  it('tells a peer who returns after a claimed forfeit that the game is over', () => {
+    const t = battle();
+    t.h({ type: 'player-fire', at: { row: 4, col: 4 } });
+    t.offline = true;
+    t.g({ type: 'player-fire', at: { row: 0, col: 0 } }); // guest's shot lost in flight
+    expect(t.guest.net?.pendingFire).not.toBeNull();
+    t.g({ type: 'link-status', status: 'channel-closed' });
+    t.h({ type: 'link-status', status: 'channel-closed' });
+    t.h({ type: 'grace-expired' });
+    t.h({ type: 'claim-win' });
+    expect(t.host.game.phase).toBe('game-over');
+    expect(t.guest.game.phase).toBe('player-turn');
+
+    t.offline = false;
+    t.h({ type: 'link-status', status: 'channel-open' });
+    t.g({ type: 'link-status', status: 'channel-open' });
+    expect(t.host.net?.status).toBe('connected');
+    expect(t.host.game.phase).toBe('game-over');
+    expect(t.host.message).toMatch(/already ended by forfeit/);
+    expect(t.guest.game.phase).toBe('game-over');
+    expect(t.guest.game.winner).toBe('opponent');
+    expect(t.guest.net?.forfeit).toBe(true);
+    expect(t.guest.net?.pendingFire).toBeNull();
+    // Both are back on the results screen, so a rematch works as usual.
+    t.h({ type: 'rematch' });
+    expect(t.guest.net?.rematchTheirs).toBe(true);
+    t.g({ type: 'rematch' });
+    expect(t.host.game.phase).toBe('placement');
+    expect(t.guest.game.phase).toBe('placement');
+    expect(t.host.net?.forfeit).toBe(false);
+  });
+
+  it('ignores a forfeit notice outside the battle', () => {
+    const t = battle();
+    t.playToEnd();
+    const before = t.guest.game;
+    t.g({ type: 'peer-message', msg: { t: 'forfeit' } });
+    expect(t.guest.game).toBe(before);
+  });
+
   it('treats an explicit leave as gone immediately', () => {
     const t = battle();
     t.g({ type: 'peer-message', msg: { t: 'leave' } });

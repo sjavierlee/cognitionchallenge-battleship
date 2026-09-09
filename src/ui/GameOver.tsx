@@ -26,11 +26,13 @@ export function GameOver({ game, difficulty, record, net, onPlayAgain, onHome }:
   const forfeit = friend && net.forfeit;
 
   const kicker = forfeit
-    ? `${enemy} left · Friend game`
+    ? `${won ? `${enemy} left` : 'You were away'} · Friend game`
     : `${won ? 'Enemy fleet destroyed' : 'Fleet lost'} · ${friend ? 'Friend game' : `${label} AI`}`;
   const shots = (n: number) => `${n} ${n === 1 ? 'shot' : 'shots'}`;
   const sub = forfeit
-    ? 'The win is yours by forfeit.'
+    ? won
+      ? 'The win is yours by forfeit.'
+      : `${enemy} claimed the win by forfeit while you were disconnected.`
     : won
       ? `You sank the entire enemy fleet in ${shots(mine.length)}.`
       : `${enemy} sank your fleet in ${shots(theirs.length)}.`;

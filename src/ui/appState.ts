@@ -583,8 +583,17 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
           next = queue(next, { t: 'fire', seq: next.pendingFire.seq, at: next.pendingFire.at });
         }
         if (game.phase === 'placement' && next.myReady) next = queue(next, { t: 'ready' });
+        // We may have taken the win while they were away; they still think the battle is on.
+        const claimed = game.phase === 'game-over' && next.forfeit && game.winner === 'player';
+        if (claimed) next = queue(next, { t: 'forfeit' });
         if (game.phase === 'game-over' && next.rematchMine) next = queue(next, { t: 'rematch' });
-        return { ...state, net: next, message: `${msg.name} is back. Carry on!` };
+        return {
+          ...state,
+          net: next,
+          message: claimed
+            ? `${msg.name} is back, but the game already ended by forfeit.`
+            : `${msg.name} is back. Carry on!`,
+        };
       }
       if (net.opponent && inBattle(game)) {
         // A different session mid-game means they reloaded and lost their board.
@@ -696,6 +705,17 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
         return newVersusGame(state, next, rematchHint(next));
       }
       return { ...state, net: asked, message: `${name} wants a rematch!` };
+    }
+
+    case 'forfeit': {
+      if (net.status !== 'connected' || !inBattle(game)) return state;
+      const name = net.opponent?.name ?? 'Your friend';
+      return {
+        ...state,
+        net: { ...net, forfeit: true, pendingFire: null },
+        game: { ...game, phase: 'game-over', winner: 'opponent' },
+        message: `You were away too long — ${name} claimed the win by forfeit.`,
+      };
     }
 
     case 'leave': {

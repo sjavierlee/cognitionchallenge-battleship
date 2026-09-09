@@ -403,6 +403,27 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   battle; the game-over note shows "Reconnecting to …" while the grace timer
   runs. Tests cover the reconnect-with-pending-rematch and grace-expiry paths.
 
+### 30. A peer returning after a claimed forfeit stayed in the battle — Fixed
+
+- **Description (found by the recorded two-browser run of #28–29):** Guest's
+  tab froze for ~30 s; the host waited out the grace, pressed **Claim win** and
+  got the forfeit Victory overlay (record 5W–5L). When the guest's tab woke
+  up it redialed, the host greeted it with "Devin A is back. Carry on!", and
+  the guest was left on **Your turn** with a live board while the host was
+  already on the results screen — the two clients disagreed on whether the
+  game existed.
+- **Root cause:** The same-session `hello` path only replayed a pending shot
+  and rematch request; nothing in the protocol could tell a returning peer
+  that its absence had already been claimed as a win, so its local battle
+  never ended.
+- **Fix:** New `forfeit` protocol message. On a resumed `hello`, a host whose
+  game is over with `forfeit: true` queues `{ t: 'forfeit' }`; the receiver,
+  if still in battle, moves to `game-over` as the loser, clears its pending
+  shot and shows "… claimed the win by forfeit while you were disconnected."
+  A `forfeit` received outside the battle is ignored. Both sides then sit on
+  the results screen and Rematch works as usual. Tests cover the resume and
+  the ignore paths.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only

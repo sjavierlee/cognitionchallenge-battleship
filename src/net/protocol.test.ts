@@ -21,6 +21,7 @@ const valid: NetMessage[] = [
     gameOver: true,
   },
   { t: 'rematch' },
+  { t: 'forfeit' },
   { t: 'leave' },
 ];
 
