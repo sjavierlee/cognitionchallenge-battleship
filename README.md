@@ -56,8 +56,22 @@ while the guest redials. After that (or if your opponent leaves) you can
 - Casual trust: each browser is authoritative for its own board and reports
   hit/miss/sunk honestly. There is no anti-cheat verification — this is for
   playing friends, not strangers.
-- Some restrictive networks (strict corporate NATs) block direct WebRTC
-  connections; without a TURN relay those pairs won't connect.
+- Direct WebRTC connections need at least one side to be reachable through
+  its NAT. Symmetric NATs (most mobile carriers, many home routers, VPNs and
+  corporate networks) block that, and the pair then needs a **TURN relay**.
+  None is bundled — PeerJS's built-in `*.turn.peerjs.com` relays are gone —
+  so such pairs fail with "Could not open a direct connection". To fix that,
+  set `VITE_TURN_URLS` (comma-separated, e.g.
+  `turn:relay.example.com:80,turns:relay.example.com:443?transport=tcp`),
+  `VITE_TURN_USERNAME` and `VITE_TURN_CREDENTIAL` at build time (Vercel /
+  Netlify environment variables, or `.env.local`) from any TURN provider —
+  free tiers exist (e.g. [Metered](https://www.metered.ca/), Cloudflare
+  Realtime TURN) and a Battleship game moves only a few kilobytes. The
+  production deployment uses a Metered static credential with
+  `VITE_TURN_URLS=turn:global.relay.metered.ca:80,turn:global.relay.metered.ca:80?transport=tcp,turn:global.relay.metered.ca:443,turns:global.relay.metered.ca:443?transport=tcp`.
+  Public STUN (Google, Cloudflare) is always included. Note that the
+  credentials are baked into the client bundle, so use a provider that
+  supports rotating them (Metered: dashboard → TURN Server → Credentials).
 
 Sound effects are off by default; toggle them from the header. The theme
 follows your system light/dark preference until you flip the header toggle,

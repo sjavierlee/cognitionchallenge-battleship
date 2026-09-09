@@ -556,13 +556,28 @@ function applyLinkError(state: AppState, error: LinkError): AppState {
   // While reconnecting, transient failures are expected; the grace timer decides the outcome.
   if (net.status === 'reconnecting' && error.kind !== 'unsupported') return state;
   if (net.status === 'lost' || net.status === 'left') return state;
+  if (error.kind === 'webrtc') {
+    // A failed negotiation only concerns that one attempt. With an opponent seated, the channel
+    // close that follows starts the reconnect grace; a host still waiting just keeps the room.
+    if (net.opponent) return state;
+    if (net.role === 'host') {
+      return withNet(
+        {
+          ...state,
+          message:
+            'A friend tried to join but the browsers could not connect directly. Your room is still open — ask them to try again.',
+        },
+        { status: 'waiting', outbox: [] },
+      );
+    }
+  }
   const text: Record<LinkError['kind'], string> = {
     'room-taken': 'That room code is already in use. Try a new code.',
     'room-not-found': `No open game found for code ${net.code}. Check the code or ask your friend to re-host.`,
     'room-full': `Room ${net.code} already has two players. Ask your friend for a new code.`,
     network: 'Could not reach the matchmaking server. Check your connection and try again.',
     webrtc:
-      'Could not open a direct connection between your browsers (a strict network may be blocking it).',
+      'Could not open a direct connection between your browsers — a strict network, VPN or mobile carrier may be blocking it. Try again, or try another network.',
     unsupported: 'This browser does not support the connections needed to play a friend.',
     unknown: `Connection failed: ${error.message}`,
   };
