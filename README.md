@@ -61,11 +61,13 @@ while the guest redials. After that (or if your opponent leaves) you can
   `turn:relay.example.com:80,turns:relay.example.com:443?transport=tcp`),
   `VITE_TURN_USERNAME` and `VITE_TURN_CREDENTIAL` at build time (Vercel /
   Netlify environment variables, or `.env.local`) from any TURN provider —
-  free tiers exist (e.g. [Metered](https://www.metered.ca/tools/openrelay/),
-  Cloudflare Realtime TURN) and a Battleship game moves only a few kilobytes.
+  free tiers exist (e.g. [Metered](https://www.metered.ca/), Cloudflare
+  Realtime TURN) and a Battleship game moves only a few kilobytes. The
+  production deployment uses a Metered static credential with
+  `VITE_TURN_URLS=turn:global.relay.metered.ca:80,turn:global.relay.metered.ca:80?transport=tcp,turn:global.relay.metered.ca:443,turns:global.relay.metered.ca:443?transport=tcp`.
   Public STUN (Google, Cloudflare) is always included. Note that the
   credentials are baked into the client bundle, so use a provider that
-  supports rotating them.
+  supports rotating them (Metered: dashboard → TURN Server → Credentials).
 
 Sound effects are off by default; toggle them from the header. The theme
 follows your system light/dark preference until you flip the header toggle,
