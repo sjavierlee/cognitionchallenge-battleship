@@ -1,4 +1,4 @@
-import type { CSSProperties, KeyboardEvent } from 'react';
+import { useEffect, type CSSProperties } from 'react';
 import { DIFFICULTIES, type Difficulty } from '../ai/huntTarget';
 import { isFleetComplete } from '../engine/board';
 import type { GameState } from '../engine/types';
@@ -89,18 +89,16 @@ export function GameOver({ game, difficulty, record, net, onPlayAgain, onHome, o
   const connected = friend && net.status === 'connected';
   const reconnecting = friend && (net.status === 'reconnecting' || net.status === 'handshake');
 
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') onClose();
-  };
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
 
   return (
-    <div
-      className="overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="gameover-title"
-      onKeyDown={onKeyDown}
-    >
+    <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
       <div className={`gameover gameover--${won ? 'win' : 'lose'}`}>
         <button
           type="button"

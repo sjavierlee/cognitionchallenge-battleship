@@ -125,9 +125,11 @@ describe('App', () => {
     ).toBeEnabled();
     expect(screen.getByText('Revealed')).toBeInTheDocument();
 
-    // Summary can be brought back, and Escape dismisses it again.
+    // Summary can be brought back, and Escape dismisses it even when focus has left the dialog.
     await user.click(screen.getByRole('button', { name: /summary/i }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 

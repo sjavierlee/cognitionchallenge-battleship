@@ -198,6 +198,7 @@ export function App({
     () => dispatch({ type: friend ? 'rematch' : 'play-again' }),
     [friend],
   );
+  const closeSummary = useCallback(() => setReviewingGame(gameId), [gameId]);
 
   const preview: Preview = useMemo(() => {
     if (!placing || !hover || !selectedShip) return null;
@@ -415,7 +416,7 @@ export function App({
               net={friend ? net : null}
               onPlayAgain={playAgain}
               onHome={goHome}
-              onClose={() => setReviewingGame(gameId)}
+              onClose={closeSummary}
             />
           )}
         </>
