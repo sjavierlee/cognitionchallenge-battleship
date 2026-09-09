@@ -4,10 +4,12 @@ import {
   canPlace,
   createBoard,
   isFleetComplete,
+  markTracking,
   placeShip,
   randomizeFleet,
   receiveShot,
   removeShip,
+  revealFleet,
 } from './board';
 import { surroundingCells } from './coords';
 import { seededRng } from './rng';
@@ -162,5 +164,78 @@ describe('receiveShot', () => {
   it('allSunk is false with unsunk ships or no ships', () => {
     expect(allSunk(board)).toBe(false);
     expect(allSunk(createBoard())).toBe(false);
+  });
+});
+
+describe('revealFleet', () => {
+  const row = (r: number, from: number, size: number) =>
+    Array.from({ length: size }, (_, i) => ({ row: r, col: from + i }));
+  const report = [
+    { kind: 'carrier' as const, cells: row(0, 0, 5) },
+    { kind: 'battleship' as const, cells: row(2, 0, 4) },
+    { kind: 'cruiser' as const, cells: row(4, 0, 3) },
+    { kind: 'submarine' as const, cells: row(6, 0, 3) },
+    { kind: 'destroyer' as const, cells: row(8, 0, 2) },
+  ];
+  const swap = (kind: string, cells: { row: number; col: number }[]) =>
+    report.map((s) => (s.kind === kind ? { ...s, cells } : s));
+
+  // Tracking grid after a miss, one hit on the carrier and sinking the destroyer.
+  let tracking = markTracking(createBoard(), { row: 9, col: 9 }, 'miss');
+  tracking = markTracking(tracking, { row: 0, col: 0 }, 'hit');
+  tracking = markTracking(tracking, { row: 8, col: 0 }, 'hit');
+  tracking = markTracking(tracking, { row: 8, col: 1 }, 'sunk', {
+    kind: 'destroyer',
+    cells: row(8, 0, 2),
+  });
+
+  it('adds the unsunk ships with their hit counts and keeps shot markers', () => {
+    const revealed = revealFleet(tracking, report);
+    expect(revealed.ships).toHaveLength(5);
+    expect(revealed.ships.find((s) => s.kind === 'carrier')?.hits).toBe(1);
+    expect(revealed.ships.find((s) => s.kind === 'destroyer')?.hits).toBe(2);
+    expect(revealed.ships.find((s) => s.kind === 'cruiser')?.hits).toBe(0);
+    expect(revealed.cells[9][9]).toBe('miss');
+    expect(revealed.cells[0][0]).toBe('hit');
+    expect(revealed.cells[0][1]).toBe('ship');
+    expect(revealed.cells[8][0]).toBe('sunk');
+    expect(revealed.cells[5][5]).toBe('empty');
+    expect(allSunk(revealed)).toBe(false);
+    expect(tracking.ships).toHaveLength(1);
+  });
+
+  it('accepts cells listed in any order and vertical ships', () => {
+    const vertical = swap('cruiser', [
+      { row: 6, col: 9 },
+      { row: 4, col: 9 },
+      { row: 5, col: 9 },
+    ]);
+    const revealed = revealFleet(tracking, vertical);
+    expect(revealed.ships.find((s) => s.kind === 'cruiser')?.cells[0]).toEqual({ row: 4, col: 9 });
+  });
+
+  it('rejects incomplete, duplicated, crooked or touching fleets', () => {
+    expect(() => revealFleet(tracking, report.slice(1))).toThrow();
+    expect(() => revealFleet(tracking, [...report.slice(1), report[1]])).toThrow();
+    const crooked = swap('cruiser', [
+      { row: 4, col: 0 },
+      { row: 4, col: 1 },
+      { row: 5, col: 1 },
+    ]);
+    expect(() => revealFleet(tracking, crooked)).toThrow();
+    const gapped = swap('cruiser', [
+      { row: 4, col: 0 },
+      { row: 4, col: 1 },
+      { row: 4, col: 3 },
+    ]);
+    expect(() => revealFleet(tracking, gapped)).toThrow();
+    expect(() => revealFleet(createBoard(), swap('destroyer', row(7, 0, 2)))).toThrow();
+  });
+
+  it('rejects a fleet that contradicts earlier shots', () => {
+    expect(() => revealFleet(tracking, swap('cruiser', row(9, 7, 3)))).toThrow();
+    expect(() => revealFleet(tracking, swap('destroyer', row(8, 5, 2)))).toThrow();
+    const carrierElsewhere = swap('carrier', row(0, 5, 5));
+    expect(() => revealFleet(tracking, carrierElsewhere)).toThrow();
   });
 });

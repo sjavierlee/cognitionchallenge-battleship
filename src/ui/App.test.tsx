@@ -111,13 +111,80 @@ describe('App', () => {
       perDifficulty: { hard: { wins: 1, losses: 0 } },
     });
 
-    await user.click(within(dialog).getByRole('button', { name: /play again/i }));
+    // Closing the summary shows the boards again with the actions still at hand.
+    await user.click(within(dialog).getByRole('button', { name: /close summary/i }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const review = screen.getByText(/fleet is revealed/i).closest('.review');
+    expect(review).not.toBeNull();
+    expect(review).toHaveTextContent(/victory/i);
+    expect(
+      within(review as HTMLElement).getByRole('button', { name: /play again/i }),
+    ).toBeEnabled();
+    expect(
+      within(review as HTMLElement).getByRole('button', { name: /back to home/i }),
+    ).toBeEnabled();
+    expect(screen.getByText('Revealed')).toBeInTheDocument();
+
+    // Summary can be brought back, and Escape dismisses it again.
+    await user.click(screen.getByRole('button', { name: /summary/i }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /play again/i }));
+    expect(screen.queryByText(/fleet is revealed/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /start battle/i })).toBeDisabled();
     // Record stays 1W after Play Again (not double-counted).
     expect(JSON.parse(localStorage.getItem('battleship.record') ?? '{}')).toMatchObject({
       wins: 1,
     });
+  });
+
+  it('reveals the surviving enemy ships after a defeat once the summary is closed', async () => {
+    const user = userEvent.setup();
+    const mirror = seededRng(77);
+    randomizeFleet(createBoard(), mirror);
+    const enemy = randomizeFleet(createBoard(), mirror);
+    render(<App rng={seededRng(77)} aiDelayMs={0} />);
+    await startAi(user);
+
+    await user.click(screen.getByRole('button', { name: /randomize/i }));
+    await user.click(screen.getByLabelText(/hard/i));
+    await user.click(screen.getByRole('button', { name: /start battle/i }));
+
+    // Fire only at open water so the Hard AI sinks our fleet first.
+    const water: string[] = [];
+    enemy.cells.forEach((row, r) =>
+      row.forEach((state, c) => {
+        if (state === 'empty') water.push(coordLabel({ row: r, col: c }));
+      }),
+    );
+    for (const label of water) {
+      if (screen.queryByRole('dialog')) break;
+      await user.click(cell('Enemy board', label));
+      await waitFor(() => {
+        if (screen.queryByRole('dialog')) return;
+        expect(cell('Enemy board', label)).toBeEnabled();
+      });
+    }
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading', { name: /defeat/i })).toBeInTheDocument();
+    const shipCell = coordLabel(enemy.ships[0].cells[0]);
+    expect(cell('Enemy board', shipCell)).toHaveAccessibleName(`${shipCell}, unknown`);
+    const enemyRegion = screen.getByRole('region', { name: 'Enemy board' });
+    expect(enemyRegion.querySelectorAll('.board-ship')).toHaveLength(0);
+
+    await user.click(within(dialog).getByRole('button', { name: /close summary/i }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(cell('Enemy board', shipCell)).toHaveAccessibleName(`${shipCell}, ship`);
+    expect(enemyRegion.querySelectorAll('.board-ship')).toHaveLength(5);
+    expect(enemyRegion.querySelectorAll('.board-ship--revealed').length).toBeGreaterThan(0);
+    expect(screen.getByText(/fleet is revealed/i).closest('.review')).toHaveTextContent(/defeat/i);
+    expect(cell('Enemy board', water[0])).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: /back to home/i }));
+    expect(screen.getByRole('button', { name: /play vs ai/i })).toBeInTheDocument();
   });
 
   it('persists the sound preference', async () => {

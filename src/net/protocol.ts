@@ -11,6 +11,8 @@ export type NetMessage =
   | { t: 'ready' }
   | { t: 'fire'; seq: number; at: Coord }
   | { t: 'result'; seq: number; at: Coord; outcome: Outcome; sunk?: SunkInfo; gameOver: boolean }
+  /** The winner's full fleet, sent once the loser's last ship goes down so they can see it. */
+  | { t: 'reveal'; ships: SunkInfo[] }
   | { t: 'rematch' }
   /** Sent to a returning peer whose absence was already claimed as a win. */
   | { t: 'forfeit' }
@@ -78,6 +80,16 @@ export function decode(raw: unknown): NetMessage | null {
         gameOver: value.gameOver,
       };
       return sunk ? { ...msg, sunk } : msg;
+    }
+    case 'reveal': {
+      if (!Array.isArray(value.ships) || value.ships.length !== FLEET.length) return null;
+      const ships: SunkInfo[] = [];
+      for (const raw of value.ships) {
+        const ship = asSunk(raw);
+        if (!ship || ships.some((s) => s.kind === ship.kind)) return null;
+        ships.push(ship);
+      }
+      return { t: 'reveal', ships };
     }
     default:
       return null;

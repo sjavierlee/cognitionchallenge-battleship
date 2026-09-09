@@ -176,6 +176,56 @@ export function markTracking(
   return { cells: next, ships: [...board.ships, { ...spec, cells: sunk.cells, hits: spec.size }] };
 }
 
+/**
+ * Adds the opponent's full fleet, as they reported it at game over, to a tracking grid so the
+ * unsunk ships can be shown. The report must be a legal layout of the whole fleet that agrees
+ * with every shot already on the grid; anything else throws and the grid is left as it was.
+ */
+export function revealFleet(board: Board, fleet: readonly SunkReport[]): Board {
+  let layout = createBoard();
+  for (const report of fleet) {
+    const spec = shipSpec(report.kind);
+    const { origin, orientation } = lineOf(report.cells);
+    layout = placeShip(layout, spec, origin, orientation);
+    const known = board.ships.find((s) => s.kind === spec.kind);
+    if (known && !known.cells.every((c) => report.cells.some((r) => sameCoord(c, r)))) {
+      throw new Error(`Revealed ${spec.name} does not match where it was sunk`);
+    }
+  }
+  if (!isFleetComplete(layout)) throw new Error('Revealed fleet is incomplete');
+
+  const next = cloneCells(board.cells);
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      const shot = board.cells[row][col];
+      const ship = layout.cells[row][col] === 'ship';
+      const struck = shot === 'hit' || shot === 'sunk';
+      if ((shot === 'miss' && ship) || (struck && !ship)) {
+        throw new Error('Revealed fleet contradicts earlier shots');
+      }
+      if (shot === 'empty' && ship) next[row][col] = 'ship';
+    }
+  }
+  const ships = layout.ships.map((ship) => ({
+    ...ship,
+    hits: ship.cells.filter((c) => board.cells[c.row][c.col] !== 'empty').length,
+  }));
+  return { cells: next, ships };
+}
+
+/** Origin and orientation of a straight, contiguous run of cells; throws for anything else. */
+function lineOf(cells: readonly Coord[]): { origin: Coord; orientation: Orientation } {
+  if (cells.length === 0) throw new Error('Ship has no cells');
+  const rows = cells.map((c) => c.row);
+  const cols = cells.map((c) => c.col);
+  const origin = { row: Math.min(...rows), col: Math.min(...cols) };
+  const orientation: Orientation = rows.every((r) => r === origin.row) ? 'horizontal' : 'vertical';
+  const expected = shipCells(origin, cells.length, orientation);
+  const matches = expected.every((e) => cells.some((c) => sameCoord(c, e)));
+  if (!matches) throw new Error('Ship cells are not a straight line');
+  return { origin, orientation };
+}
+
 export function allSunk(board: Board): boolean {
   return board.ships.length > 0 && board.ships.every((s) => s.hits === s.size);
 }

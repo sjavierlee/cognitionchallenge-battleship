@@ -637,6 +637,23 @@ kbd {
   filter: saturate(0);
 }
 
+.board-ship--revealed {
+  animation: surface 0.5s var(--ease-out) both;
+}
+
+@keyframes surface {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
 .board-ship--sunk {
   --ship: #7d7d80;
   --ship-super: #5d5f63;
@@ -1273,6 +1290,7 @@ kbd {
 }
 
 .gameover {
+  position: relative;
   width: min(440px, 100%);
   padding: 1.75rem 1.75rem 1.5rem;
   border-radius: 20px;
@@ -1367,6 +1385,53 @@ kbd {
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.6rem;
+}
+
+.gameover-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 1;
+}
+
+.gameover-hint {
+  margin: 1rem 0 0;
+  font-size: 0.85rem;
+}
+
+.gameover-hint .link {
+  color: var(--muted);
+}
+
+.gameover-hint .link:hover {
+  color: var(--text);
+}
+
+/* Post-game review bar: the summary is dismissed and the enemy fleet is on show. */
+.review {
+  border-left: 4px solid var(--accent);
+}
+
+.review--win {
+  border-left-color: var(--ok);
+}
+
+.review--lose {
+  border-left-color: var(--hit);
+}
+
+.review-outcome {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.review--win .review-outcome {
+  color: var(--ok);
+}
+
+.review--lose .review-outcome {
+  color: var(--hit);
 }
 
 /* ------------------------------------------------------------------ */

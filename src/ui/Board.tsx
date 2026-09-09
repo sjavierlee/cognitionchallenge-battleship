@@ -37,6 +37,8 @@ type Props = {
   showFleet?: boolean;
   /** Short status shown beside the title, e.g. whose turn it is. */
   badge?: string;
+  /** Enemy ships exposed after the game: afloat ones are drawn with a reveal animation. */
+  revealed?: boolean;
 };
 
 const COLS = 'ABCDEFGHIJ'.split('');
@@ -83,6 +85,7 @@ export function Board({
   ariaLabel,
   showFleet = false,
   badge,
+  revealed = false,
 }: Props) {
   const previewKeys = new Map<string, boolean>();
   if (preview) for (const c of preview.cells) previewKeys.set(coordKey(c), preview.valid);
@@ -143,10 +146,11 @@ export function Board({
           )}
           {drawnShips.map((ship) => {
             const orientation = shipOrientation(ship);
+            const sunk = isSunk(ship);
             return (
               <div
                 key={ship.kind}
-                className={`board-ship${isSunk(ship) ? ' board-ship--sunk' : ''}`}
+                className={`board-ship${sunk ? ' board-ship--sunk' : ''}${revealed && !sunk ? ' board-ship--revealed' : ''}`}
                 style={spriteArea(ship.cells[0], ship.size, orientation)}
               >
                 <ShipSprite kind={ship.kind} orientation={orientation} />

@@ -448,6 +448,25 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   and the next redial gets through once the heartbeat frees the seat. Tests
   cover both the error and the ignored-while-reconnecting paths.
 
+### 32. Game-over close button was unclickable under the kicker text — Fixed
+
+- **Description:** While building the fleet-reveal feature, the new × button
+  on the game-over card rendered fine but a real click landed on the "Fleet
+  lost · Hard AI" kicker instead — Playwright reported that the
+  `.gameover-kicker` paragraph intercepts pointer events. Keyboard (Escape /
+  Tab + Enter) still worked, so the RTL tests passed.
+- **Root cause:** The kicker is a full-width block that comes after the
+  absolutely positioned button in DOM order, and its `.stagger` entrance
+  animation animates `transform`. With `animation-fill-mode: both` the
+  finished animation keeps a computed identity transform
+  (`matrix(1,0,0,1,0,0)`, confirmed via `getComputedStyle`), which still
+  creates a stacking context — so the kicker paints at the same level as the
+  `z-index: auto` button and, being later in the DOM, on top of it.
+  `document.elementFromPoint` at the button's centre returned the `<p>`.
+- **Fix:** `.gameover-close { z-index: 1 }`. The screenshot script that
+  exercises the modal now clicks the button for real before capturing the
+  revealed board.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only

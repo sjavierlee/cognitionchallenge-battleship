@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isFleetComplete } from '../engine/board';
 import { seededRng } from '../engine/rng';
 import type { Coord } from '../engine/types';
 import type { NetMessage } from '../net/protocol';
@@ -281,6 +282,50 @@ describe('friend mode: battle', () => {
     expect(t.host.net?.forfeit).toBe(false);
   });
 
+  it('sends the winner fleet to the loser at game over so their tracking grid shows every ship', () => {
+    const t = battle();
+    t.playToEnd();
+    const hostWon = t.host.game.winner === 'player';
+    const winner = hostWon ? t.host : t.guest;
+    const loser = hostWon ? t.guest : t.host;
+    expect(isFleetComplete(loser.game.opponent)).toBe(true);
+    const revealed = loser.game.opponent.ships.map((s) => ({ kind: s.kind, cells: s.cells }));
+    const actual = winner.game.player.ships.map((s) => ({ kind: s.kind, cells: s.cells }));
+    expect(revealed.sort((a, b) => a.kind.localeCompare(b.kind))).toEqual(
+      actual.sort((a, b) => a.kind.localeCompare(b.kind)),
+    );
+    // Every shot the loser fired is still on the grid, and the reveal added only fresh ship cells.
+    for (const entry of loser.game.log.filter((e) => e.by === 'player')) {
+      const state = loser.game.opponent.cells[entry.at.row][entry.at.col];
+      expect(state).not.toBe('empty');
+      expect(state).not.toBe('ship');
+    }
+    // The winner still knows nothing new about the loser's board beyond what was sunk.
+    expect(winner.game.opponent.ships.every((s) => s.hits >= s.size)).toBe(true);
+    // A reveal is display-only: it never flips the phase or the log.
+    expect(loser.game.phase).toBe('game-over');
+    expect(loser.game.log.length).toBe(winner.game.log.length);
+  });
+
+  it('ignores a reveal that arrives mid-battle or is addressed to the winner', () => {
+    const t = battle();
+    const fleet = t.guest.game.player.ships.map((s) => ({ kind: s.kind, cells: s.cells }));
+    const mid = t.host.game;
+    t.h({ type: 'peer-message', msg: { t: 'reveal', ships: fleet } });
+    expect(t.host.game).toBe(mid);
+
+    t.playToEnd();
+    const hostWon = t.host.game.winner === 'player';
+    const w = hostWon ? t.host.game : t.guest.game;
+    const bogus = (hostWon ? t.host : t.guest).game.player.ships.map((s) => ({
+      kind: s.kind,
+      cells: s.cells,
+    }));
+    if (hostWon) t.h({ type: 'peer-message', msg: { t: 'reveal', ships: bogus } });
+    else t.g({ type: 'peer-message', msg: { t: 'reveal', ships: bogus } });
+    expect((hostWon ? t.host : t.guest).game).toBe(w);
+  });
+
   it('rematch needs both players and swaps who fires first', () => {
     const t = battle();
     t.playToEnd();
@@ -377,6 +422,11 @@ describe('friend mode: disconnects', () => {
     expect(t.guest.game.winner).toBe('opponent');
     expect(t.guest.net?.forfeit).toBe(true);
     expect(t.guest.net?.pendingFire).toBeNull();
+    // The forfeit winner's fleet is revealed to the returning loser too.
+    expect(isFleetComplete(t.guest.game.opponent)).toBe(true);
+    expect(t.guest.game.opponent.ships.map((s) => s.cells).sort()).toEqual(
+      t.host.game.player.ships.map((s) => s.cells).sort(),
+    );
     // Both are back on the results screen, so a rematch works as usual.
     t.h({ type: 'rematch' });
     expect(t.guest.net?.rematchTheirs).toBe(true);

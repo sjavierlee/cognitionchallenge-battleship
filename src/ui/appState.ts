@@ -7,6 +7,7 @@ import {
   placeShip,
   randomizeFleet,
   removeShip,
+  revealFleet,
   shipAt,
 } from '../engine/board';
 import { coordLabel, sameCoord, shipOrientation } from '../engine/coords';
@@ -179,6 +180,11 @@ function withNet(state: AppState, net: Partial<NetState>): AppState {
 
 function queue(net: NetState, ...msgs: NetMessage[]): NetState {
   return { ...net, outbox: [...net.outbox, ...msgs] };
+}
+
+/** My fleet, sent to the loser at game over so they can see where the ships were. */
+function revealMessage(game: GameState): NetMessage {
+  return { t: 'reveal', ships: game.player.ships.map(({ kind, cells }) => ({ kind, cells })) };
 }
 
 /** Both fleets are placed and locked: start the battle with the side decided by game number. */
@@ -587,6 +593,9 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
         // We may have taken the win while they were away; they still think the battle is on.
         const claimed = game.phase === 'game-over' && next.forfeit && game.winner === 'player';
         if (claimed) next = queue(next, { t: 'forfeit' });
+        if (game.phase === 'game-over' && game.winner === 'player') {
+          next = queue(next, revealMessage(game));
+        }
         if (game.phase === 'game-over' && next.rematchMine) next = queue(next, { t: 'rematch' });
         return {
           ...state,
@@ -684,16 +693,27 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
       }
       const shot = next.log[next.log.length - 1];
       const name = net.opponent?.name ?? 'your friend';
+      const won = next.phase === 'game-over';
+      const settled: NetState = { ...net, pendingFire: null };
       return {
         ...state,
         game: next,
-        net: { ...net, pendingFire: null },
+        net: won ? queue(settled, revealMessage(next)) : settled,
         shotSeq: state.shotSeq + 1,
-        message:
-          next.phase === 'game-over'
-            ? `Victory! You sank ${name}'s entire fleet.`
-            : `${describeShot(shot)} ${capitalize(name)}'s turn.`,
+        message: won
+          ? `Victory! You sank ${name}'s entire fleet.`
+          : `${describeShot(shot)} ${capitalize(name)}'s turn.`,
       };
+    }
+
+    case 'reveal': {
+      if (game.phase !== 'game-over' || game.winner !== 'opponent') return state;
+      if (isFleetComplete(game.opponent)) return state;
+      try {
+        return { ...state, game: { ...game, opponent: revealFleet(game.opponent, msg.ships) } };
+      } catch {
+        return state;
+      }
     }
 
     case 'rematch': {

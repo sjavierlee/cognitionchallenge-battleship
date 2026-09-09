@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { decode, encode, sanitizeName, type NetMessage } from './protocol';
+import { decode, encode, sanitizeName, type NetMessage, type SunkInfo } from './protocol';
+
+function row(kind: SunkInfo['kind'], r: number, size: number): SunkInfo {
+  return { kind, cells: Array.from({ length: size }, (_, col) => ({ row: r, col })) };
+}
+
+const fleet: SunkInfo[] = [
+  row('carrier', 0, 5),
+  row('battleship', 2, 4),
+  row('cruiser', 4, 3),
+  row('submarine', 6, 3),
+  row('destroyer', 8, 2),
+];
 
 const valid: NetMessage[] = [
   { t: 'hello', v: 1, name: 'Ada', session: 'abc' },
@@ -20,6 +32,7 @@ const valid: NetMessage[] = [
     },
     gameOver: true,
   },
+  { t: 'reveal', ships: fleet },
   { t: 'rematch' },
   { t: 'forfeit' },
   { t: 'leave' },
@@ -73,6 +86,20 @@ describe('protocol', () => {
       },
       { t: 'hello', v: '1', name: 'x', session: 's' },
       { t: 'hello', v: 1, name: 'x', session: '' },
+      // reveal must carry exactly one well-formed report per ship class
+      { t: 'reveal' },
+      { t: 'reveal', ships: fleet.slice(0, 4) },
+      { t: 'reveal', ships: [...fleet, row('destroyer', 9, 2)] },
+      {
+        t: 'reveal',
+        ships: [...fleet.slice(0, 4), { kind: 'destroyer', cells: [{ row: 8, col: 0 }] }],
+      },
+      {
+        t: 'reveal',
+        ships: [...fleet.slice(0, 4), { kind: 'dinghy', cells: [{ row: 8, col: 0 }] }],
+      },
+      { t: 'reveal', ships: [...fleet.slice(0, 4), row('destroyer', 10, 2)] },
+      { t: 'reveal', ships: [...fleet.slice(0, 4), row('carrier', 8, 5)] },
     ];
     for (const msg of bad) expect(decode(msg), JSON.stringify(msg)).toBeNull();
   });
