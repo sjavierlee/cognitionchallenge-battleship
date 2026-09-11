@@ -570,6 +570,22 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   the guest with a fresh session and asserts exactly one side is on move (the
   host).
 
+### 38. Battle boards overflowed narrow phones by a few pixels — Fixed
+
+- **Description:** At a 390px viewport the battle screen had a horizontal
+  scrollbar and the boards' right edges were clipped by ~5px, in both themes.
+  Spotted by the recorded Bullet run; measured identically with Bullet off, so
+  it predates the clocks.
+- **Root cause:** Below 900px the cell size was `clamp(22px, 8vw, 36px)`: ten
+  cells alone take 80vw, leaving 20vw (78px at 390) for the row-label column,
+  the panel padding and border, the page padding and a vertical scrollbar —
+  which add up to ~85–95px. The board is `width: max-content`, so nothing
+  shrank; the panel simply ran past the viewport.
+- **Fix:** Size cells from the space actually left over:
+  `--cell: clamp(20px, calc((100vw - 6rem) / 10), 36px)`. Measured at a
+  300px-wide viewport: `scrollWidth === clientWidth` for both Standard and
+  Bullet battles (was 317 vs 300).
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only
