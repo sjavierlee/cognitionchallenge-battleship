@@ -234,7 +234,8 @@ Home ──► [Play vs AI]        (existing flow, unchanged)
 
 ```ts
 type NetMessage =
-  | { t: 'hello'; v: 1; name: string; session: string } // sent by both when the channel opens
+  | { t: 'hello'; v: 2; name: string; session: string } // sent by both when the channel opens
+  | { t: 'settings'; bullet: boolean } // host → guest, on connect and on every change (v3)
   | { t: 'ready' } // fleet placed and locked
   | { t: 'fire'; seq: number; at: Coord } // my shot at your board
   | {
@@ -246,6 +247,7 @@ type NetMessage =
       gameOver: boolean;
     }
   | { t: 'rematch' } // request / accept
+  | { t: 'flag'; who: 'me' | 'you' } // Bullet: a clock hit zero (v3)
   | { t: 'leave' };
 ```
 
@@ -338,3 +340,69 @@ src/ui/useP2P.ts    # hooks the peer wrapper into the reducer (like the current 
 3. **Reducer + hook** — modes and net actions in `appState`, `useP2P`; two-reducer integration test.
 4. **UI** — Home, Lobby, Ready/opponent status, badges, disconnect/forfeit, rematch, record.
 5. **Verify** — recorded two-browser run on a preview deploy; BUG.md entries; README section.
+
+## 12. v3 — Bullet Battleship
+
+Same idea as bullet chess: a lobby toggle (AI and friend games) that gives each player **one
+60-second clock for the whole game**. A clock only runs while it is that player's turn; whoever
+hits zero loses on time. Bullet games count towards their own W/L record.
+
+### Decisions (locked)
+
+- **Chess-style clocks**, not a per-move timer: 60 s each, banked across turns.
+- **Host sets it** in friend games; the guest sees a locked badge. No negotiation.
+- **Header shows the record for the mode you are in** (Standard or Bullet); the game-over
+  summary shows both.
+- **The AI is on the clock too**: it fires every ~0.4 s (instead of 0.7 s) and can in theory be
+  flagged, though a 60 s budget is ample for its ≤100 shots.
+
+### Clock model (`engine/clock.ts`, pure)
+
+```ts
+type Clock = {
+  player: number; // ms banked while not running
+  opponent: number;
+  running: Player | null; // whose clock is ticking
+  since: number; // wall-clock ms when `running` started
+  flagged: Player | null; // who hit zero
+};
+```
+
+`remaining(clock, who, now)` = banked − (now − since) for the running side. Time is derived from
+`Date.now()` at every read rather than decremented by an interval, so a throttled background tab
+or a paused JS thread cannot hand out free seconds. The reducer takes `now` as an injected
+dependency (like `rng`) so the tests can drive the clock deterministically.
+
+### Reducer
+
+- `bullet: boolean` (lobby setting, kept across rematches) and `clock: Clock | null` (only
+  during a Bullet battle) live next to `game` in `AppState`.
+- After every action the reducer re-syncs `clock.running` to the side whose turn it is (nobody
+  once the game is over), banking the elapsed time of the side that just stopped.
+- `set-bullet` is accepted only during placement, only by the AI player or the host, and never
+  after Ready. Hosts broadcast `settings` on every change and on (re)connect; guests apply it.
+- `flag` (from the local timer or the wire) is honoured only if the clock really is at zero for
+  the running side; it ends the game exactly like a fleet destruction (winner set, clocks
+  stopped, result recorded once, fleet revealed to the loser, `flag` sent to the friend).
+- Each side flags itself; the opponent's screen waits an extra 5 s grace before flagging a
+  silent friend, so the friend's own (authoritative) flag normally arrives first.
+
+### Records
+
+`GameRecord` gains `bullet: ControlRecord` with the same shape (overall / per difficulty /
+friend). Old saved records load as "no Bullet games yet"; Standard totals are untouched.
+
+### UI
+
+- `BulletToggle` (switch for AI/host, locked badge for guest/after Ready) in both lobbies.
+- `ClockFace` on each board header: `m:ss`, tenths under 10 s, urgent styling, flagged state.
+- Timeout copy on the status bar and the game-over card; both records on the card.
+
+### Testing
+
+- Pure clock tests; protocol round-trips for `settings` / `flag`; record isolation/migration.
+- Reducer tests with an injected clock: AI and two-reducer friend tables covering turn
+  switching, timeouts in both directions, ignored stale flags, rematch reset, reconnect.
+- RTL tests with fake timers: AI toggle → battle → flag → Bullet record; host/guest sync,
+  locked badge, timeout over the wire, reveal, rematch.
+- Recorded browser run of an AI Bullet game and a two-browser friend Bullet game.

@@ -10,6 +10,7 @@ import {
   revealFleet,
   shipAt,
 } from '../engine/board';
+import { createClock, flagClock, remaining, runClock, type Clock } from '../engine/clock';
 import { coordLabel, sameCoord, shipOrientation } from '../engine/coords';
 import {
   applyShotResult,
@@ -73,7 +74,14 @@ export type AppState = {
   shotSeq: number;
   /** Increments on every new game so per-game side effects run exactly once. */
   gameId: number;
+  /** Bullet time control chosen in the lobby (the host's choice in a friend game). */
+  bullet: boolean;
+  /** Per-side clocks, present only during and after a Bullet battle. */
+  clock: Clock | null;
 };
+
+/** How long past the estimated zero to wait for a friend's own `flag` before calling it. */
+export const OPPONENT_FLAG_GRACE_MS = 5_000;
 
 export type AppAction =
   | { type: 'go-home' }
@@ -87,6 +95,7 @@ export type AppAction =
   | { type: 'randomize' }
   | { type: 'reset-fleet' }
   | { type: 'set-difficulty'; difficulty: Difficulty }
+  | { type: 'set-bullet'; bullet: boolean }
   | { type: 'start' }
   | { type: 'ready' }
   | { type: 'player-fire'; at: Coord }
@@ -94,6 +103,8 @@ export type AppAction =
   | { type: 'play-again' }
   | { type: 'rematch' }
   | { type: 'claim-win' }
+  /** The running side's Bullet clock has hit zero. */
+  | { type: 'flag' }
   | { type: 'link-status'; status: LinkStatus }
   | { type: 'link-error'; error: LinkError }
   | { type: 'grace-expired' }
@@ -114,6 +125,8 @@ export function initialAppState(difficulty: Difficulty = 'normal', gameId = 0): 
     message: 'Choose how you want to play.',
     shotSeq: 0,
     gameId,
+    bullet: false,
+    clock: null,
   };
 }
 
@@ -195,6 +208,7 @@ function beginVersus(state: AppState, net: NetState): AppState {
     ...state,
     net,
     game: startVersus(state.game, first),
+    clock: state.bullet ? createClock() : null,
     selectedShip: null,
     message:
       first === 'player'
@@ -220,6 +234,7 @@ function newVersusGame(state: AppState, net: NetState, message: string): AppStat
       forfeit: false,
     },
     game: createGame(),
+    clock: null,
     selectedShip: 'carrier',
     orientation: 'horizontal',
     shotSeq: 0,
@@ -232,7 +247,57 @@ function inBattle(game: GameState): boolean {
   return game.phase === 'player-turn' || game.phase === 'opponent-turn';
 }
 
-export function appReducer(state: AppState, action: AppAction, rng: Rng = defaultRng): AppState {
+/** Whose Bullet clock should be ticking right now: the side to move, while the link is up. */
+function tickingSide(state: AppState): Player | null {
+  const { game, net } = state;
+  if (state.mode === 'friend' && net?.status !== 'connected') return null;
+  if (game.phase === 'player-turn') return net?.pendingFire ? null : 'player';
+  if (game.phase === 'opponent-turn') return 'opponent';
+  return null;
+}
+
+/** Keeps the clock in step with the turn after every transition. */
+function syncClock(state: AppState, now: () => number): AppState {
+  const { clock } = state;
+  if (!clock || clock.flagged) return state;
+  const side = tickingSide(state);
+  if (side === clock.running) return state;
+  return { ...state, clock: runClock(clock, side, now()) };
+}
+
+/** Ends the game on the clock with `loser` out of time. */
+function timeOut(state: AppState, loser: Player, now: number, announce: boolean): AppState {
+  const { game } = state;
+  const clock = state.clock ?? createClock();
+  const won = loser === 'opponent';
+  const over: GameState = { ...game, phase: 'game-over', winner: won ? 'player' : 'opponent' };
+  const name = opponentName(state);
+  let net: NetState | null = state.net ? { ...state.net, pendingFire: null } : null;
+  if (net && state.mode === 'friend') {
+    if (announce) net = queue(net, { t: 'flag', who: won ? 'you' : 'me' });
+    if (won) net = queue(net, revealMessage(over));
+  }
+  return {
+    ...state,
+    game: over,
+    net,
+    clock: flagClock(clock, loser, now),
+    message: won
+      ? `${capitalize(name)} ran out of time — victory on the clock!`
+      : `Out of time! ${capitalize(name)} wins on the clock.`,
+  };
+}
+
+export function appReducer(
+  state: AppState,
+  action: AppAction,
+  rng: Rng = defaultRng,
+  now: () => number = Date.now,
+): AppState {
+  return syncClock(reduce(state, action, rng, now), now);
+}
+
+function reduce(state: AppState, action: AppAction, rng: Rng, now: () => number): AppState {
   const { game } = state;
   switch (action.type) {
     case 'go-home':
@@ -340,6 +405,18 @@ export function appReducer(state: AppState, action: AppAction, rng: Rng = defaul
       if (game.phase !== 'placement') return state;
       return { ...state, difficulty: action.difficulty, ai: createAi(action.difficulty) };
 
+    case 'set-bullet': {
+      if (game.phase !== 'placement' || action.bullet === state.bullet) return state;
+      const net = state.net;
+      if (net && (net.role !== 'host' || net.myReady)) return state;
+      const settings: NetMessage = { t: 'settings', bullet: action.bullet };
+      return {
+        ...state,
+        bullet: action.bullet,
+        net: net && net.status === 'connected' ? queue(net, settings) : net,
+      };
+    }
+
     case 'start': {
       if (state.mode !== 'ai' || game.phase !== 'placement') return state;
       try {
@@ -347,8 +424,11 @@ export function appReducer(state: AppState, action: AppAction, rng: Rng = defaul
           ...state,
           game: startGame(game, rng),
           ai: createAi(state.difficulty),
+          clock: state.bullet ? createClock() : null,
           selectedShip: null,
-          message: 'Battle stations! Fire at the enemy waters.',
+          message: state.bullet
+            ? 'Battle stations! Your minute is ticking — fire at the enemy waters.'
+            : 'Battle stations! Fire at the enemy waters.',
         };
       } catch {
         return { ...state, message: 'Place all five ships before starting.' };
@@ -426,6 +506,7 @@ export function appReducer(state: AppState, action: AppAction, rng: Rng = defaul
       return {
         ...initialAppState(state.difficulty, state.gameId + 1),
         mode: 'ai',
+        bullet: state.bullet,
         message: PLACEMENT_HINT,
       };
 
@@ -454,6 +535,14 @@ export function appReducer(state: AppState, action: AppAction, rng: Rng = defaul
       };
     }
 
+    case 'flag': {
+      const clock = state.clock;
+      if (!clock || !clock.running || !inBattle(game)) return state;
+      const at = now();
+      if (remaining(clock, clock.running, at) > 0) return state;
+      return timeOut(state, clock.running, at, true);
+    }
+
     case 'link-status':
       return applyLinkStatus(state, action.status);
 
@@ -472,7 +561,7 @@ export function appReducer(state: AppState, action: AppAction, rng: Rng = defaul
     }
 
     case 'peer-message':
-      return state.net ? applyPeerMessage(state, state.net, action.msg) : state;
+      return state.net ? applyPeerMessage(state, state.net, action.msg, now) : state;
 
     case 'outbox-sent':
       return withNet(state, { outbox: state.net?.outbox.slice(action.count) ?? [] });
@@ -554,7 +643,13 @@ function applyLinkError(state: AppState, error: LinkError): AppState {
   const net = state.net;
   if (!net || net.status === 'error') return state;
   // While reconnecting, transient failures are expected; the grace timer decides the outcome.
-  if (net.status === 'reconnecting' && error.kind !== 'unsupported') return state;
+  // With the channel up, broker trouble is irrelevant: only the heartbeat decides it is gone.
+  if (
+    (net.status === 'reconnecting' || net.status === 'connected') &&
+    error.kind !== 'unsupported'
+  ) {
+    return state;
+  }
   if (net.status === 'lost' || net.status === 'left') return state;
   if (error.kind === 'webrtc') {
     // A failed negotiation only concerns that one attempt. With an opponent seated, the channel
@@ -587,7 +682,18 @@ function applyLinkError(state: AppState, error: LinkError): AppState {
   );
 }
 
-function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppState {
+/** The host tells a (new or returning) guest which settings the room is using. */
+function withSettings(state: AppState, net: NetState): NetState {
+  if (net.role !== 'host' || state.game.phase !== 'placement') return net;
+  return queue(net, { t: 'settings', bullet: state.bullet });
+}
+
+function applyPeerMessage(
+  state: AppState,
+  net: NetState,
+  msg: NetMessage,
+  now: () => number,
+): AppState {
   const { game } = state;
   switch (msg.t) {
     case 'hello': {
@@ -600,7 +706,7 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
       const opponent = { name: msg.name, session: msg.session };
       if (resumed) {
         // Same tab came back: re-send anything they may have missed while the channel was down.
-        let next: NetState = { ...net, status: 'connected', opponent };
+        let next: NetState = withSettings(state, { ...net, status: 'connected', opponent });
         if (next.pendingFire) {
           next = queue(next, { t: 'fire', seq: next.pendingFire.seq, at: next.pendingFire.at });
         }
@@ -608,6 +714,8 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
         // We may have taken the win while they were away; they still think the battle is on.
         const claimed = game.phase === 'game-over' && next.forfeit && game.winner === 'player';
         if (claimed) next = queue(next, { t: 'forfeit' });
+        const flagged = game.phase === 'game-over' ? state.clock?.flagged : null;
+        if (flagged) next = queue(next, { t: 'flag', who: flagged === 'player' ? 'me' : 'you' });
         if (game.phase === 'game-over' && game.winner === 'player') {
           next = queue(next, revealMessage(game));
         }
@@ -628,28 +736,51 @@ function applyPeerMessage(state: AppState, net: NetState, msg: NetMessage): AppS
         );
       }
       // Before the battle nothing has been exchanged: whoever this is, both sides ready up afresh.
+      // A newcomer counts games from zero, so the series restarts for the host to stay in step.
       const joined: NetState = {
         ...net,
         status: 'connected',
         opponent,
         myReady: false,
         theirReady: false,
+        gameNumber: 0,
         rematchMine: false,
         rematchTheirs: false,
       };
       if (game.phase === 'game-over') {
-        return newVersusGame(
+        const fresh = newVersusGame(
           state,
           joined,
           `${msg.name} joined. Place your fleet, then press Ready.`,
         );
+        return fresh.net ? { ...fresh, net: withSettings(fresh, fresh.net) } : fresh;
       }
       return {
         ...state,
-        net: joined,
+        net: withSettings(state, joined),
         selectedShip: isFleetComplete(game.player) ? null : nextUnplaced(game),
         message: `${msg.name} joined! Place your fleet, then press Ready.`,
       };
+    }
+
+    case 'settings': {
+      if (net.role !== 'guest' || game.phase !== 'placement' || net.status !== 'connected') {
+        return state;
+      }
+      if (msg.bullet === state.bullet) return state;
+      const host = net.opponent?.name ?? 'The host';
+      return {
+        ...state,
+        bullet: msg.bullet,
+        message: msg.bullet
+          ? `${host} switched on Bullet: one minute each for the whole game.`
+          : `${host} switched Bullet off — no clocks this game.`,
+      };
+    }
+
+    case 'flag': {
+      if (net.status !== 'connected' || !inBattle(game)) return state;
+      return timeOut(state, msg.who === 'me' ? 'opponent' : 'player', now(), false);
     }
 
     case 'ready': {

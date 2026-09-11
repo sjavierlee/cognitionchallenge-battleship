@@ -514,6 +514,80 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   exercises the modal now clicks the button for real before capturing the
   revealed board.
 
+### 35. Bullet clocks sat on the wrong boards — Fixed
+
+- **Description:** In a Bullet game, _Your fleet_ showed the opponent's clock
+  and _Enemy waters_ showed yours. Found by the recorded run: after losing on
+  time with no shots fired, _Your fleet_ still read 1:00 while _Enemy waters_
+  showed the flagged 0.0. The `aria-label`s ("Your clock", "Normal AI's
+  clock") were correct, so the RTL tests passed.
+- **Root cause:** The clocks were placed next to the turn badges, and the
+  badges live on the board where the turn is _acted out_ — "Your turn" sits on
+  _Enemy waters_ (where you fire), "AI's turn" on _Your fleet_ (where it
+  fires). That reading is defensible for a badge but not for a clock: the
+  board title reads as the player's name, so a clock under "Your fleet" is
+  read as yours regardless of the badge next to it.
+- **Fix:** Swapped the two `ClockFace`s in `App.tsx` so your clock sits on
+  _Your fleet_ and the opponent's on _Enemy waters_, matching chess UIs where
+  the clock goes next to the player's name. `App.bullet.test.tsx` now asserts
+  which board region contains which timer.
+
+### 36. A broker hiccup on the guest's side killed a healthy game ("No open game found") — Fixed
+
+- **Description:** Seconds after a friend Bullet game ended on time, the
+  guest's results screen switched to "Devin A has left" with the status line
+  "No open game found for code …", so Rematch vanished — while the host, whose
+  tab never changed, still offered a rematch. Neither tab had been closed.
+- **Root cause:** Two faults stacked. PeerJS re-emits `open` every time it
+  reconnects to the signalling broker (its `reconnect()` re-runs
+  `_initialize`), and our guest handler dialled the host on _every_ `open`.
+  `attach()` then closed the existing, perfectly healthy data channel — and
+  because `conn` had already been swapped, `dropped()` ignored its close event,
+  so the reducer never heard `channel-closed` and stayed `connected`. When the
+  redundant dial failed (the host's id is briefly unregistered while the host's
+  own broker socket recovers), `peer-unavailable` arrived as a `link-error`
+  against a `connected` state, which `applyLinkError` treated as fatal. The
+  public broker drops idle sockets regularly, so this hit real games.
+- **Fix:** `peer.on('open')` only dials when no channel is open — an
+  established WebRTC channel does not need the broker. Defensively,
+  `applyLinkError` now ignores broker/dial errors (everything but
+  `unsupported`) while the channel is `connected`; the heartbeat is the only
+  judge of a live channel. Reducer test: a connected guest receiving
+  `broker-lost` + `room-not-found` + `network` errors stays untouched.
+
+### 37. Fresh guest after a rematch deadlocked: both sides waited for the other to fire — Fixed
+
+- **Description:** After at least one rematch, if the guest reloaded (or left
+  and a new friend joined the room), the next game started with both players
+  in "opponent's turn" — nobody could fire.
+- **Root cause:** Who fires first is derived from `gameNumber` parity, kept in
+  step by both sides incrementing on rematch. A newcomer starts at 0, but the
+  host's `hello` handler carried its old `gameNumber` (e.g. 1) into the new
+  pairing, so the host computed "guest first" while the guest computed "host
+  first".
+- **Fix:** A non-resumed `hello` (new session) resets the host's `gameNumber`
+  to 0: a new opponent is a new series. Reducer test plays a rematch, replaces
+  the guest with a fresh session and asserts exactly one side is on move (the
+  host).
+
+### 38. Battle boards overflowed narrow phones by a few pixels — Fixed
+
+- **Description:** At a 390px viewport the battle screen had a horizontal
+  scrollbar and the boards' right edges were clipped by ~5px, in both themes.
+  Spotted by the recorded Bullet run; measured identically with Bullet off, so
+  it predates the clocks.
+- **Root cause:** Below 900px the cell size was `clamp(22px, 8vw, 36px)`: ten
+  cells alone take 80vw, leaving 20vw (78px at 390) for the row-label column,
+  the panel padding and border, the page padding and a vertical scrollbar —
+  which add up to ~85–95px. The board is `width: max-content`, so nothing
+  shrank; the panel simply ran past the viewport.
+- **Fix:** Size cells from the space actually left over:
+  `--cell: clamp(20px, calc((100vw - 6rem) / 10), 36px)`. Measured at a
+  300px-wide viewport: `scrollWidth === clientWidth` for both Standard and
+  Bullet battles (was 317 vs 300). The retest at 320px then showed the header
+  controls (Home, Bullet record, sound, theme) overflowing by 24px in Bullet
+  because `.header-right` was a non-wrapping flex row; it now wraps too.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only
@@ -523,3 +597,10 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   deterministic RTL test (`App.test.tsx`, seeded rng + `aiDelayMs={0}`) now
   also drives a full win.
 - Audible sound output was not assessed, only the toggle's persistence.
+- Bullet clocks are tested with an injected `now()` in the reducer and with
+  Vitest fake timers in the RTL tests (`App.bullet.test.tsx`). Only
+  `setTimeout`/`setInterval`/`Date` are faked and clicks use `fireEvent`:
+  faking `setImmediate` starves React's scheduler, and user-event's async
+  wrapper waits on a real `setTimeout(0)` that never fires under fake timers
+  (the tests hang instead of failing). Real-time behaviour — a tab left in the
+  background, the 0.4 s AI cadence — is covered by the recorded browser run.

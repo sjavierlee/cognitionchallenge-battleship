@@ -21,7 +21,7 @@ can enter an optional display name; otherwise you're _Captain_.
    Misses, hits, and sinks are shown on both boards and in the shot log.
 4. **Win** by sinking all five enemy ships before the AI sinks yours. Your
    win/loss record (overall, per difficulty, and vs friends) is saved in
-   `localStorage`.
+   `localStorage`, separately for Standard and Bullet games.
 5. **Review** — close the game-over summary (× or <kbd>Esc</kbd>) to see
    where the enemy ships were; _Play again_ and _Back to home_ stay in a bar
    above the boards, and _Summary_ brings the overlay back.
@@ -79,6 +79,18 @@ which is then remembered.
 
 Your ships are drawn as top-down silhouettes on your grid and in the tray;
 enemy ships stay hidden until you sink them.
+
+### Bullet Battleship
+
+Flip the **Bullet** switch in the lobby (versus the AI or, as host, versus a
+friend — the guest sees the host's choice as a locked badge) and each side
+gets a single **one-minute clock for the whole game**, chess-style: your
+clock only runs while it's your turn, and if it hits zero you lose on time.
+Both clocks sit above the boards and show tenths under ten seconds; the clock
+keeps counting even if you switch tabs. The AI plays on the same clock and
+fires faster (about 0.4 s a shot) to keep up. Bullet wins and losses are
+kept in their own record: the header shows the record for the mode you're
+in, and the game-over summary shows both.
 
 ## AI
 

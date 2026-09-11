@@ -138,3 +138,11 @@ export function ShuffleIcon(props: SVGProps<SVGSVGElement>) {
     </Icon>
   );
 }
+
+export function BoltIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <Icon {...props}>
+      <path d="M11.2 2.5 4.5 11.2h5l-.7 6.3 6.7-8.7h-5l.7-6.3Z" />
+    </Icon>
+  );
+}

@@ -139,9 +139,10 @@ export async function openPeerLink(role: Role, code: string, events: LinkEvents)
 
   events.onStatus('registering');
 
+  // Fires again after every broker reconnect; an established channel does not need the broker.
   peer.on('open', () => {
     if (role === 'host') events.onStatus('waiting');
-    else dial();
+    else if (!conn?.open) dial();
   });
   peer.on('connection', (c) => {
     if (role !== 'host') c.close();

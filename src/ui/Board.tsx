@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { coordKey, coordLabel, shipOrientation } from '../engine/coords';
 import type {
   Board as BoardModel,
@@ -37,6 +37,8 @@ type Props = {
   showFleet?: boolean;
   /** Short status shown beside the title, e.g. whose turn it is. */
   badge?: string;
+  /** Extra head content, e.g. this side's Bullet clock. */
+  clock?: ReactNode;
   /** Enemy ships exposed after the game: afloat ones are drawn with a reveal animation. */
   revealed?: boolean;
 };
@@ -85,6 +87,7 @@ export function Board({
   ariaLabel,
   showFleet = false,
   badge,
+  clock,
   revealed = false,
 }: Props) {
   const previewKeys = new Map<string, boolean>();
@@ -96,7 +99,10 @@ export function Board({
     <section className={`board-wrap${active ? ' board-wrap--active' : ''}`} aria-label={ariaLabel}>
       <div className="board-head">
         <h2 className="board-title">{title}</h2>
-        {badge && <span className="board-badge">{badge}</span>}
+        <div className="board-head-right">
+          {badge && <span className="board-badge">{badge}</span>}
+          {clock}
+        </div>
       </div>
       <div
         className={`board${disabled ? ' board--disabled' : ''}`}
