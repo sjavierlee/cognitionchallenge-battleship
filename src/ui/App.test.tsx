@@ -111,6 +111,15 @@ describe('App', () => {
       perDifficulty: { hard: { wins: 1, losses: 0 } },
     });
 
+    // Focus is trapped: Play again has focus; Shift+Tab wraps to the last control, Tab wraps back.
+    expect(within(dialog).getByRole('button', { name: /play again/i })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(within(dialog).getByRole('button', { name: /close summary/i })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(within(dialog).getByRole('button', { name: /close to see/i })).toHaveFocus();
+    await user.tab();
+    expect(within(dialog).getByRole('button', { name: /close summary/i })).toHaveFocus();
+
     // Closing the summary shows the boards again with the actions still at hand.
     await user.click(within(dialog).getByRole('button', { name: /close summary/i }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

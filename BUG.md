@@ -588,6 +588,37 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   controls (Home, Bullet record, sound, theme) overflowing by 24px in Bullet
   because `.header-right` was a non-wrapping flex row; it now wraps too.
 
+### 39. Game-over dialog did not trap keyboard focus — Fixed
+
+- **Description:** With the result summary open, Shift+Tab from "Play again"
+  walked out of the dialog into the page behind it: the shot log, the theme
+  toggle and the header "reset" link were reachable, and Enter on the latter
+  wiped the record while the summary was still showing. Found by the final
+  exploratory browser sweep.
+- **Root cause:** The overlay declared `role="dialog" aria-modal="true"` but
+  nothing enforced it: the only key handling was Escape-to-close, and the page
+  underneath was neither inert nor hidden, so the browser's natural tab order
+  carried on into it.
+- **Fix:** `GameOver` keeps a ref to the overlay and, on Tab / Shift+Tab, wraps
+  focus between its first and last focusable controls (pulling focus back in if
+  it has somehow left). The Victory UI test now tabs backwards off "Play again"
+  and asserts focus lands on the × and then the "Close to see…" link, and
+  forwards from the link back to the ×.
+
+### 40. A long unbroken player name blew up the mobile battle layout — Fixed
+
+- **Description:** A legal 24-character name with no spaces (e.g. 24 W's) made
+  the opponent's battle screen 521px wide on a 390px phone: "WWWW…'s waters",
+  the turn badge and the clocks were pushed off the right edge.
+- **Root cause:** Names are free text but nothing allowed them to break
+  mid-word. `.board-head` was a single non-wrapping flex row and the board panel
+  sizes to its content, so a long word set the panel's minimum width.
+- **Fix:** `overflow-wrap: anywhere` on `body` (a word only breaks when it would
+  otherwise overflow, so normal text is unaffected), `.board-head` wraps and
+  `.board-title` gets `min-width: 0`. Measured with a 24-W host: the guest's
+  battle at phone width has `scrollWidth === clientWidth` and the title wraps
+  onto two lines.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only

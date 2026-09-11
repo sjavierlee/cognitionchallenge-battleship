@@ -1,4 +1,4 @@
-import { useEffect, type CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { DIFFICULTIES, type Difficulty } from '../ai/huntTarget';
 import { isFleetComplete } from '../engine/board';
 import { formatClock, type Clock } from '../engine/clock';
@@ -51,6 +51,9 @@ export function GameOverActions({ net, onPlayAgain, onHome, prominent = false }:
     </>
   );
 }
+
+const FOCUSABLE =
+  'button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 type Props = {
   game: GameState;
@@ -111,16 +114,38 @@ export function GameOver({
   const connected = friend && net.status === 'connected';
   const reconnecting = friend && (net.status === 'reconnecting' || net.status === 'handshake');
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') return onClose();
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const current = document.activeElement;
+      const inside = current instanceof HTMLElement && dialogRef.current.contains(current);
+      if (e.shiftKey && (current === first || !inside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (current === last || !inside)) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
+    <div
+      ref={dialogRef}
+      className="overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="gameover-title"
+    >
       <div className={`gameover gameover--${won ? 'win' : 'lose'}`}>
         <button
           type="button"
