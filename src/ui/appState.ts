@@ -643,7 +643,13 @@ function applyLinkError(state: AppState, error: LinkError): AppState {
   const net = state.net;
   if (!net || net.status === 'error') return state;
   // While reconnecting, transient failures are expected; the grace timer decides the outcome.
-  if (net.status === 'reconnecting' && error.kind !== 'unsupported') return state;
+  // With the channel up, broker trouble is irrelevant: only the heartbeat decides it is gone.
+  if (
+    (net.status === 'reconnecting' || net.status === 'connected') &&
+    error.kind !== 'unsupported'
+  ) {
+    return state;
+  }
   if (net.status === 'lost' || net.status === 'left') return state;
   if (error.kind === 'webrtc') {
     // A failed negotiation only concerns that one attempt. With an opponent seated, the channel
@@ -730,12 +736,14 @@ function applyPeerMessage(
         );
       }
       // Before the battle nothing has been exchanged: whoever this is, both sides ready up afresh.
+      // A newcomer counts games from zero, so the series restarts for the host to stay in step.
       const joined: NetState = {
         ...net,
         status: 'connected',
         opponent,
         myReady: false,
         theirReady: false,
+        gameNumber: 0,
         rematchMine: false,
         rematchTheirs: false,
       };

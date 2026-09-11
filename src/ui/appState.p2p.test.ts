@@ -623,6 +623,46 @@ describe('friend mode: disconnects', () => {
     expect(t.host.net?.gameNumber).toBe(1);
   });
 
+  it('ignores broker errors while the channel is up', () => {
+    const t = battle();
+    t.playToEnd();
+    const before = t.guest;
+    t.g({ type: 'link-status', status: 'broker-lost' });
+    t.g({ type: 'link-error', error: { kind: 'room-not-found', message: 'peer unavailable' } });
+    t.g({ type: 'link-error', error: { kind: 'network', message: 'socket closed' } });
+    expect(t.guest).toBe(before);
+    expect(t.guest.net?.status).toBe('connected');
+  });
+
+  it('a fresh guest after a rematch agrees with the host on who fires first', () => {
+    const t = battle();
+    t.playToEnd();
+    t.h({ type: 'rematch' });
+    t.g({ type: 'rematch' });
+    t.placeBoth();
+    t.readyBoth();
+    t.playToEnd();
+    expect(t.host.net?.gameNumber).toBe(1);
+    // The guest reloads on the results screen and rejoins as a new session.
+    t.guest = appReducer(initialAppState(), {
+      type: 'join-room',
+      code: 'K7Q2ZD',
+      name: 'Bob',
+      session: 'sess-guest-2',
+    });
+    t.h({ type: 'link-status', status: 'channel-closed' });
+    t.h({ type: 'link-status', status: 'channel-open' });
+    t.g({ type: 'link-status', status: 'channel-open' });
+    expect(t.host.net?.status).toBe('connected');
+    expect(t.guest.net?.status).toBe('connected');
+    expect(t.host.game.phase).toBe('placement');
+    t.placeBoth();
+    t.readyBoth();
+    const phases = [t.host.game.phase, t.guest.game.phase].sort();
+    expect(phases).toEqual(['opponent-turn', 'player-turn']);
+    expect(t.host.game.phase).toBe('player-turn');
+  });
+
   it('gives up on a results-screen drop after the grace period without offering a forfeit', () => {
     const t = battle();
     t.playToEnd();

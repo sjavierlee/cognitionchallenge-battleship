@@ -532,6 +532,44 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   the clock goes next to the player's name. `App.bullet.test.tsx` now asserts
   which board region contains which timer.
 
+### 36. A broker hiccup on the guest's side killed a healthy game ("No open game found") — Fixed
+
+- **Description:** Seconds after a friend Bullet game ended on time, the
+  guest's results screen switched to "Devin A has left" with the status line
+  "No open game found for code …", so Rematch vanished — while the host, whose
+  tab never changed, still offered a rematch. Neither tab had been closed.
+- **Root cause:** Two faults stacked. PeerJS re-emits `open` every time it
+  reconnects to the signalling broker (its `reconnect()` re-runs
+  `_initialize`), and our guest handler dialled the host on _every_ `open`.
+  `attach()` then closed the existing, perfectly healthy data channel — and
+  because `conn` had already been swapped, `dropped()` ignored its close event,
+  so the reducer never heard `channel-closed` and stayed `connected`. When the
+  redundant dial failed (the host's id is briefly unregistered while the host's
+  own broker socket recovers), `peer-unavailable` arrived as a `link-error`
+  against a `connected` state, which `applyLinkError` treated as fatal. The
+  public broker drops idle sockets regularly, so this hit real games.
+- **Fix:** `peer.on('open')` only dials when no channel is open — an
+  established WebRTC channel does not need the broker. Defensively,
+  `applyLinkError` now ignores broker/dial errors (everything but
+  `unsupported`) while the channel is `connected`; the heartbeat is the only
+  judge of a live channel. Reducer test: a connected guest receiving
+  `broker-lost` + `room-not-found` + `network` errors stays untouched.
+
+### 37. Fresh guest after a rematch deadlocked: both sides waited for the other to fire — Fixed
+
+- **Description:** After at least one rematch, if the guest reloaded (or left
+  and a new friend joined the room), the next game started with both players
+  in "opponent's turn" — nobody could fire.
+- **Root cause:** Who fires first is derived from `gameNumber` parity, kept in
+  step by both sides incrementing on rematch. A newcomer starts at 0, but the
+  host's `hello` handler carried its old `gameNumber` (e.g. 1) into the new
+  pairing, so the host computed "guest first" while the guest computed "host
+  first".
+- **Fix:** A non-resumed `hello` (new session) resets the host's `gameNumber`
+  to 0: a new opponent is a new series. Reducer test plays a rematch, replaces
+  the guest with a fresh session and asserts exactly one side is on move (the
+  host).
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only
