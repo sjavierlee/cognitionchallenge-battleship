@@ -584,7 +584,9 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
 - **Fix:** Size cells from the space actually left over:
   `--cell: clamp(20px, calc((100vw - 6rem) / 10), 36px)`. Measured at a
   300px-wide viewport: `scrollWidth === clientWidth` for both Standard and
-  Bullet battles (was 317 vs 300).
+  Bullet battles (was 317 vs 300). The retest at 320px then showed the header
+  controls (Home, Bullet record, sound, theme) overflowing by 24px in Bullet
+  because `.header-right` was a non-wrapping flex row; it now wraps too.
 
 ### Coverage notes
 

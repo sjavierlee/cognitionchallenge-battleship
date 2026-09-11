@@ -397,8 +397,12 @@ kbd {
     /* Ten cells plus the row labels, panel padding, page padding and a scrollbar must fit. */
     --cell: clamp(20px, calc((100vw - 6rem) / 10), 36px);
   }
-  .header {
+  .header,
+  .header-right {
     flex-wrap: wrap;
+  }
+  .header-right {
+    justify-content: flex-end;
   }
 }
 
