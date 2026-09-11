@@ -617,7 +617,10 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   otherwise overflow, so normal text is unaffected), `.board-head` wraps and
   `.board-title` gets `min-width: 0`. Measured with a 24-W host: the guest's
   battle at phone width has `scrollWidth === clientWidth` and the title wraps
-  onto two lines.
+  onto two lines. The retest showed the now-wrapping result kicker ("WWW… ran
+  out of time · Bullet · Friend game") running underneath the absolutely
+  positioned × in the dialog corner; `.gameover-kicker` now has horizontal
+  padding equal to the close button's footprint so the text stays clear of it.
 
 ### Coverage notes
 

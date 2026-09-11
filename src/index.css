@@ -1348,6 +1348,8 @@ kbd {
 }
 
 .gameover-kicker {
+  /* Keep wrapped text clear of the absolutely positioned × in the corner. */
+  padding: 0 1.75rem;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;
