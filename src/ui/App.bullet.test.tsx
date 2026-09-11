@@ -68,6 +68,8 @@ describe('Bullet Battleship UI', () => {
 
     const mine = clockOf(/^your clock/i);
     const theirs = clockOf(/^normal ai's clock/i);
+    expect(screen.getByRole('region', { name: 'Your board' })).toContainElement(mine);
+    expect(screen.getByRole('region', { name: 'Enemy board' })).toContainElement(theirs);
     expect(mine).toHaveTextContent('1:00');
     expect(theirs).toHaveTextContent('1:00');
     expect(mine).toHaveClass('clock--running');

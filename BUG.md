@@ -514,6 +514,24 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   exercises the modal now clicks the button for real before capturing the
   revealed board.
 
+### 35. Bullet clocks sat on the wrong boards — Fixed
+
+- **Description:** In a Bullet game, _Your fleet_ showed the opponent's clock
+  and _Enemy waters_ showed yours. Found by the recorded run: after losing on
+  time with no shots fired, _Your fleet_ still read 1:00 while _Enemy waters_
+  showed the flagged 0.0. The `aria-label`s ("Your clock", "Normal AI's
+  clock") were correct, so the RTL tests passed.
+- **Root cause:** The clocks were placed next to the turn badges, and the
+  badges live on the board where the turn is _acted out_ — "Your turn" sits on
+  _Enemy waters_ (where you fire), "AI's turn" on _Your fleet_ (where it
+  fires). That reading is defensible for a badge but not for a clock: the
+  board title reads as the player's name, so a clock under "Your fleet" is
+  read as yours regardless of the badge next to it.
+- **Fix:** Swapped the two `ClockFace`s in `App.tsx` so your clock sits on
+  _Your fleet_ and the opponent's on _Enemy waters_, matching chess UIs where
+  the clock goes next to the player's name. `App.bullet.test.tsx` now asserts
+  which board region contains which timer.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only

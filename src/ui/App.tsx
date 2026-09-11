@@ -447,11 +447,7 @@ export function App({
                   disabled
                   active={opponentTurn}
                   badge={opponentBadge}
-                  clock={
-                    clock && (
-                      <ClockFace clock={clock} side="opponent" label={`${enemyName}'s clock`} />
-                    )
-                  }
+                  clock={clock && <ClockFace clock={clock} side="player" label="Your clock" />}
                   lastShot={lastOpponentShot}
                 />
                 <Board
@@ -464,7 +460,11 @@ export function App({
                   disabled={!canFire}
                   active={playerTurn}
                   badge={playerBadge}
-                  clock={clock && <ClockFace clock={clock} side="player" label="Your clock" />}
+                  clock={
+                    clock && (
+                      <ClockFace clock={clock} side="opponent" label={`${enemyName}'s clock`} />
+                    )
+                  }
                   lastShot={lastPlayerShot}
                   onCellClick={(at) => dispatch({ type: 'player-fire', at })}
                 />
