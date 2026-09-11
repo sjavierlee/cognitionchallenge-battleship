@@ -1,8 +1,9 @@
 import { useEffect, type CSSProperties } from 'react';
 import { DIFFICULTIES, type Difficulty } from '../ai/huntTarget';
 import { isFleetComplete } from '../engine/board';
+import { formatClock, type Clock } from '../engine/clock';
 import type { GameState } from '../engine/types';
-import type { GameRecord } from '../storage/record';
+import { controlRecord, type GameRecord, type TimeControl } from '../storage/record';
 import type { NetState } from './appState';
 import { CloseIcon } from './icons';
 
@@ -56,13 +57,24 @@ type Props = {
   difficulty: Difficulty;
   record: GameRecord;
   net: NetState | null;
+  /** The Bullet clocks, when this was a Bullet game. */
+  clock: Clock | null;
   onPlayAgain: () => void;
   onHome: () => void;
   /** Dismisses the summary to look at the boards with the enemy fleet revealed. */
   onClose: () => void;
 };
 
-export function GameOver({ game, difficulty, record, net, onPlayAgain, onHome, onClose }: Props) {
+export function GameOver({
+  game,
+  difficulty,
+  record,
+  net,
+  clock,
+  onPlayAgain,
+  onHome,
+  onClose,
+}: Props) {
   const won = game.winner === 'player';
   const mine = game.log.filter((s) => s.by === 'player');
   const hits = mine.filter((s) => s.outcome !== 'miss').length;
@@ -71,20 +83,30 @@ export function GameOver({ game, difficulty, record, net, onPlayAgain, onHome, o
   const label = DIFFICULTIES.find((d) => d.id === difficulty)?.label ?? difficulty;
   const friend = net !== null;
   const enemy = friend ? (net.opponent?.name ?? 'Your friend') : `The ${label} AI`;
-  const tally = friend ? record.friend : record.perDifficulty[difficulty];
+  const control: TimeControl = clock ? 'bullet' : 'standard';
+  const active = controlRecord(record, control);
+  const tally = friend ? active.friend : active.perDifficulty[difficulty];
   const forfeit = friend && net.forfeit;
+  const flagged = clock?.flagged ?? null;
 
+  const setting = `${clock ? 'Bullet · ' : ''}${friend ? 'Friend game' : `${label} AI`}`;
   const kicker = forfeit
-    ? `${won ? `${enemy} left` : 'You were away'} · Friend game`
-    : `${won ? 'Enemy fleet destroyed' : 'Fleet lost'} · ${friend ? 'Friend game' : `${label} AI`}`;
+    ? `${won ? `${enemy} left` : 'You were away'} · ${setting}`
+    : flagged
+      ? `${won ? `${enemy} ran out of time` : 'Out of time'} · ${setting}`
+      : `${won ? 'Enemy fleet destroyed' : 'Fleet lost'} · ${setting}`;
   const shots = (n: number) => `${n} ${n === 1 ? 'shot' : 'shots'}`;
   const sub = forfeit
     ? won
       ? 'The win is yours by forfeit.'
       : `${enemy} claimed the win by forfeit while you were disconnected.`
-    : won
-      ? `You sank the entire enemy fleet in ${shots(mine.length)}.`
-      : `${enemy} sank your fleet in ${shots(theirs.length)}.`;
+    : flagged
+      ? won
+        ? `${enemy}'s clock hit zero — you win on time with ${formatClock(clock?.player ?? 0)} to spare.`
+        : `Your clock hit zero — ${enemy} wins on time.`
+      : won
+        ? `You sank the entire enemy fleet in ${shots(mine.length)}.`
+        : `${enemy} sank your fleet in ${shots(theirs.length)}.`;
 
   const connected = friend && net.status === 'connected';
   const reconnecting = friend && (net.status === 'reconnecting' || net.status === 'handshake');
@@ -132,18 +154,29 @@ export function GameOver({ game, difficulty, record, net, onPlayAgain, onHome, o
             <dd>{accuracy}%</dd>
           </div>
           <div>
-            <dt>{friend ? 'Record vs friends' : `Record vs ${label}`}</dt>
+            <dt>
+              {clock ? 'Bullet' : 'Record'} vs {friend ? 'friends' : label}
+            </dt>
             <dd>
               {tally.wins}W – {tally.losses}L
             </dd>
           </div>
           <div>
-            <dt>Overall</dt>
+            <dt>{clock ? 'Bullet overall' : 'Overall'}</dt>
             <dd>
-              {record.wins}W – {record.losses}L
+              {active.wins}W – {active.losses}L
             </dd>
           </div>
         </dl>
+        <p className="gameover-records stagger" style={{ '--i': 3 } as CSSProperties}>
+          <span>
+            Standard {record.wins}W – {record.losses}L
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>
+            Bullet {record.bullet.wins}W – {record.bullet.losses}L
+          </span>
+        </p>
         {friend && net.rematchTheirs && !net.rematchMine && (
           <p className="gameover-note stagger" style={{ '--i': 4 } as CSSProperties} role="status">
             {net.opponent?.name ?? 'Your friend'} wants a rematch!

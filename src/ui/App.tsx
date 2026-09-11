@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { DIFFICULTIES } from '../ai/huntTarget';
 import { playSound } from '../audio/sounds';
 import { canPlace, isFleetComplete } from '../engine/board';
+import { remaining } from '../engine/clock';
 import { inBounds, shipCells } from '../engine/coords';
 import { defaultRng, type Rng } from '../engine/rng';
 import { shipSpec } from '../engine/ships';
@@ -12,6 +13,7 @@ import { generateRoomCode, roomFromHash, roomHash } from '../net/roomCode';
 import {
   clearRecord,
   commitResult,
+  controlRecord,
   loadLastMode,
   loadPlayerName,
   loadRecord,
@@ -22,9 +24,18 @@ import {
   saveSoundEnabled,
   type GameRecord,
   type LastMode,
+  type TimeControl,
 } from '../storage/record';
-import { appReducer, initialAppState, type AppAction, type AppState } from './appState';
+import {
+  appReducer,
+  initialAppState,
+  OPPONENT_FLAG_GRACE_MS,
+  type AppAction,
+  type AppState,
+} from './appState';
 import { Board, type LastShot, type Preview } from './Board';
+import { BulletToggle } from './BulletToggle';
+import { ClockFace } from './ClockFace';
 import { ConnectionBanner } from './ConnectionBanner';
 import { DifficultyPicker } from './DifficultyPicker';
 import { GameOver, ReviewBar } from './GameOver';
@@ -38,6 +49,10 @@ import { useP2P } from './useP2P';
 import { useTheme } from './useTheme';
 
 const AI_DELAY_MS = 700;
+/** The AI keeps up the pace in Bullet games. */
+const BULLET_AI_DELAY_MS = 400;
+/** Slack so the clock is really at zero when the reducer checks it. */
+const FLAG_SLACK_MS = 20;
 
 type Props = {
   /** Random source for fleet placement and AI shots; injectable for deterministic tests. */
@@ -80,8 +95,19 @@ export function App({
   const recordedFor = useRef<number>(-1);
   const playedSeq = useRef<number>(0);
 
-  const { mode, game, difficulty, net, selectedShip, orientation, message, shotSeq, gameId } =
-    state;
+  const {
+    mode,
+    game,
+    difficulty,
+    net,
+    selectedShip,
+    orientation,
+    message,
+    shotSeq,
+    gameId,
+    bullet,
+    clock,
+  } = state;
   const friend = mode === 'friend' && net !== null;
   const placing = game.phase === 'placement';
   const playerTurn = game.phase === 'player-turn';
@@ -93,11 +119,23 @@ export function App({
   const graceLeft = useP2P(net, dispatch, { factory: linkFactory, graceMs: reconnectGraceMs });
 
   // AI takes its turn after a short pause so the player can read the result.
+  const aiPause = bullet ? Math.min(aiDelayMs, BULLET_AI_DELAY_MS) : aiDelayMs;
   useEffect(() => {
     if (!aiTurn) return;
-    const id = window.setTimeout(() => dispatch({ type: 'ai-fire' }), aiDelayMs);
+    const id = window.setTimeout(() => dispatch({ type: 'ai-fire' }), aiPause);
     return () => window.clearTimeout(id);
-  }, [aiTurn, shotSeq, aiDelayMs]);
+  }, [aiTurn, shotSeq, aiPause]);
+
+  // Bullet: call the flag when the running side's clock reaches zero. A friend is given a little
+  // grace to report their own flag first, since only they know their clock exactly.
+  useEffect(() => {
+    if (!clock?.running || clock.flagged) return;
+    const theirs = mode === 'friend' && clock.running === 'opponent';
+    const left = remaining(clock, clock.running, Date.now());
+    const wait = left + FLAG_SLACK_MS + (theirs ? OPPONENT_FLAG_GRACE_MS : 0);
+    const id = window.setTimeout(() => dispatch({ type: 'flag' }), wait);
+    return () => window.clearTimeout(id);
+  }, [clock, mode]);
 
   // Keyboard: R rotates during placement.
   useEffect(() => {
@@ -113,23 +151,25 @@ export function App({
   // Sounds for the latest shot / result.
   const lastLogged = game.log[game.log.length - 1];
   useEffect(() => {
-    const seqKey = gameId * 1000 + shotSeq;
-    if (!lastLogged || playedSeq.current === seqKey) return;
+    const seqKey = gameId * 1000 + (over ? 999 : shotSeq);
+    if ((!lastLogged && !over) || playedSeq.current === seqKey) return;
     playedSeq.current = seqKey;
     if (!soundOn) return;
     if (over) {
       playSound(game.winner === 'player' ? 'win' : 'lose');
-    } else {
+    } else if (lastLogged) {
       playSound(lastLogged.outcome);
     }
   }, [gameId, shotSeq, soundOn, lastLogged, over, game.winner]);
 
-  // Persist the win/loss record once per finished game.
+  // Persist the win/loss record once per finished game, under the time control it was played at.
+  const control: TimeControl = bullet ? 'bullet' : 'standard';
   useEffect(() => {
     if (!over || recordedFor.current === gameId) return;
     recordedFor.current = gameId;
-    setRecord(commitResult(mode === 'friend' ? 'friend' : difficulty, game.winner === 'player'));
-  }, [over, gameId, mode, difficulty, game.winner]);
+    const bucket = mode === 'friend' ? 'friend' : difficulty;
+    setRecord(commitResult(bucket, game.winner === 'player', control));
+  }, [over, gameId, mode, difficulty, game.winner, control]);
 
   // Keep the displayed record in sync with games finished in other tabs.
   useEffect(() => {
@@ -155,9 +195,9 @@ export function App({
   }, []);
 
   const resetRecord = useCallback(() => {
-    clearRecord();
+    clearRecord(control);
     setRecord(loadRecord());
-  }, []);
+  }, [control]);
 
   const rememberMode = useCallback((m: LastMode) => {
     saveLastMode(m);
@@ -239,6 +279,9 @@ export function App({
       ? 'Revealed'
       : undefined;
 
+  const shown = controlRecord(record, control);
+  const hostsRoom = friend && net.role === 'host';
+
   return (
     <div className="app">
       <header className="header">
@@ -252,16 +295,20 @@ export function App({
               Home
             </button>
           )}
-          <span className="record" title="Win / loss record (saved in this browser)">
+          <span
+            className={`record${bullet ? ' record--bullet' : ''}`}
+            title={`${bullet ? 'Bullet' : 'Standard'} win / loss record (saved in this browser)`}
+          >
+            {bullet && <span className="record-mode">Bullet</span>}
             <span className="record-tally">
-              {record.wins}W – {record.losses}L
+              {shown.wins}W – {shown.losses}L
             </span>
-            {record.wins + record.losses > 0 && (
+            {shown.wins + shown.losses > 0 && (
               <button
                 type="button"
                 className="link"
                 onClick={resetRecord}
-                aria-label="Reset win/loss record"
+                aria-label={`Reset ${bullet ? 'Bullet' : 'standard'} win/loss record`}
               >
                 reset
               </button>
@@ -349,18 +396,30 @@ export function App({
                   onReset={() => dispatch({ type: 'reset-fleet' })}
                 />
                 {friend ? (
-                  <RoomPanel
-                    net={net}
-                    fleetComplete={isFleetComplete(game.player)}
-                    onReady={() => dispatch({ type: 'ready' })}
-                    onLeave={goHome}
-                    onRetry={() => joinRoom(net.code)}
-                  />
+                  <>
+                    <BulletToggle
+                      on={bullet}
+                      onChange={(on) => dispatch({ type: 'set-bullet', bullet: on })}
+                      locked={!hostsRoom || net.myReady}
+                      lockedBy={hostsRoom ? undefined : net.opponent?.name}
+                    />
+                    <RoomPanel
+                      net={net}
+                      fleetComplete={isFleetComplete(game.player)}
+                      onReady={() => dispatch({ type: 'ready' })}
+                      onLeave={goHome}
+                      onRetry={() => joinRoom(net.code)}
+                    />
+                  </>
                 ) : (
                   <>
                     <DifficultyPicker
                       value={difficulty}
                       onChange={(d) => dispatch({ type: 'set-difficulty', difficulty: d })}
+                    />
+                    <BulletToggle
+                      on={bullet}
+                      onChange={(on) => dispatch({ type: 'set-bullet', bullet: on })}
                     />
                     <button
                       type="button"
@@ -388,6 +447,11 @@ export function App({
                   disabled
                   active={opponentTurn}
                   badge={opponentBadge}
+                  clock={
+                    clock && (
+                      <ClockFace clock={clock} side="opponent" label={`${enemyName}'s clock`} />
+                    )
+                  }
                   lastShot={lastOpponentShot}
                 />
                 <Board
@@ -400,6 +464,7 @@ export function App({
                   disabled={!canFire}
                   active={playerTurn}
                   badge={playerBadge}
+                  clock={clock && <ClockFace clock={clock} side="player" label="Your clock" />}
                   lastShot={lastPlayerShot}
                   onCellClick={(at) => dispatch({ type: 'player-fire', at })}
                 />
@@ -414,6 +479,7 @@ export function App({
               difficulty={difficulty}
               record={record}
               net={friend ? net : null}
+              clock={clock}
               onPlayAgain={playAgain}
               onHome={goHome}
               onClose={closeSummary}

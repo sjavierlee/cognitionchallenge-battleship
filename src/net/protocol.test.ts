@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { decode, encode, sanitizeName, type NetMessage, type SunkInfo } from './protocol';
+import {
+  decode,
+  encode,
+  PROTOCOL_VERSION,
+  sanitizeName,
+  type NetMessage,
+  type SunkInfo,
+} from './protocol';
 
 function row(kind: SunkInfo['kind'], r: number, size: number): SunkInfo {
   return { kind, cells: Array.from({ length: size }, (_, col) => ({ row: r, col })) };
@@ -14,8 +21,12 @@ const fleet: SunkInfo[] = [
 ];
 
 const valid: NetMessage[] = [
-  { t: 'hello', v: 1, name: 'Ada', session: 'abc' },
+  { t: 'hello', v: PROTOCOL_VERSION, name: 'Ada', session: 'abc' },
   { t: 'ready' },
+  { t: 'settings', bullet: true },
+  { t: 'settings', bullet: false },
+  { t: 'flag', who: 'me' },
+  { t: 'flag', who: 'you' },
   { t: 'fire', seq: 0, at: { row: 3, col: 4 } },
   { t: 'result', seq: 0, at: { row: 3, col: 4 }, outcome: 'miss', gameOver: false },
   {
@@ -86,6 +97,13 @@ describe('protocol', () => {
       },
       { t: 'hello', v: '1', name: 'x', session: 's' },
       { t: 'hello', v: 1, name: 'x', session: '' },
+      // settings/flag payloads must be exactly typed
+      { t: 'settings' },
+      { t: 'settings', bullet: 'yes' },
+      { t: 'settings', bullet: 1 },
+      { t: 'flag' },
+      { t: 'flag', who: 'them' },
+      { t: 'flag', who: true },
       // reveal must carry exactly one well-formed report per ship class
       { t: 'reveal' },
       { t: 'reveal', ships: fleet.slice(0, 4) },
@@ -106,6 +124,10 @@ describe('protocol', () => {
 
   it('strips unknown fields and sanitizes names', () => {
     expect(decode({ t: 'ready', extra: 1 })).toEqual({ t: 'ready' });
+    expect(decode({ t: 'settings', bullet: true, extra: 'x' })).toEqual({
+      t: 'settings',
+      bullet: true,
+    });
     expect(decode({ t: 'hello', v: 1, name: '   ', session: 's' })).toEqual({
       t: 'hello',
       v: 1,

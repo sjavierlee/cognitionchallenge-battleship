@@ -523,3 +523,10 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   deterministic RTL test (`App.test.tsx`, seeded rng + `aiDelayMs={0}`) now
   also drives a full win.
 - Audible sound output was not assessed, only the toggle's persistence.
+- Bullet clocks are tested with an injected `now()` in the reducer and with
+  Vitest fake timers in the RTL tests (`App.bullet.test.tsx`). Only
+  `setTimeout`/`setInterval`/`Date` are faked and clicks use `fireEvent`:
+  faking `setImmediate` starves React's scheduler, and user-event's async
+  wrapper waits on a real `setTimeout(0)` that never fires under fake timers
+  (the tests hang instead of failing). Real-time behaviour — a tab left in the
+  background, the 0.4 s AI cadence — is covered by the recorded browser run.

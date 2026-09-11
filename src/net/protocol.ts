@@ -2,18 +2,22 @@ import { inBounds } from '../engine/coords';
 import { FLEET } from '../engine/ships';
 import type { Coord, Outcome, ShipKind } from '../engine/types';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export type SunkInfo = { kind: ShipKind; cells: Coord[] };
 
 export type NetMessage =
   | { t: 'hello'; v: number; name: string; session: string }
+  /** Host-chosen game settings, sent when a guest joins and whenever the host changes them. */
+  | { t: 'settings'; bullet: boolean }
   | { t: 'ready' }
   | { t: 'fire'; seq: number; at: Coord }
   | { t: 'result'; seq: number; at: Coord; outcome: Outcome; sunk?: SunkInfo; gameOver: boolean }
   /** The winner's full fleet, sent once the loser's last ship goes down so they can see it. */
   | { t: 'reveal'; ships: SunkInfo[] }
   | { t: 'rematch' }
+  /** Bullet clock ran out: `me` means the sender lost on time, `you` that the receiver did. */
+  | { t: 'flag'; who: 'me' | 'you' }
   /** Sent to a returning peer whose absence was already claimed as a win. */
   | { t: 'forfeit' }
   | { t: 'leave' };
@@ -50,8 +54,14 @@ export function decode(raw: unknown): NetMessage | null {
       if (value.session.length === 0 || value.session.length > 64) return null;
       return { t: 'hello', v: value.v, name: sanitizeName(value.name), session: value.session };
     }
+    case 'settings':
+      if (typeof value.bullet !== 'boolean') return null;
+      return { t: 'settings', bullet: value.bullet };
     case 'ready':
       return { t: 'ready' };
+    case 'flag':
+      if (value.who !== 'me' && value.who !== 'you') return null;
+      return { t: 'flag', who: value.who };
     case 'rematch':
       return { t: 'rematch' };
     case 'forfeit':
