@@ -142,6 +142,8 @@ body {
     32px 32px,
     auto;
   color: var(--text);
+  /* Player names are free text; never let one unbroken word widen the page. */
+  overflow-wrap: anywhere;
   transition:
     background-color 0.25s var(--ease-in-out),
     color 0.25s var(--ease-in-out);
@@ -464,13 +466,15 @@ kbd {
 
 .board-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.35rem 0.75rem;
   padding: 0 0.1rem;
 }
 
 .board-title {
+  min-width: 0;
   font-family: var(--font-serif);
   font-size: 1.05rem;
   font-weight: 600;
@@ -1344,6 +1348,8 @@ kbd {
 }
 
 .gameover-kicker {
+  /* Keep wrapped text clear of the absolutely positioned × in the corner. */
+  padding: 0 1.75rem;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;
