@@ -640,7 +640,11 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   leave the invite — clears it); `Home` adjusts its code input (and clears any
   validation error) whenever `pendingCode` changes. Covered by an RTL test that
   renders Home, sets `location.hash` to an invite, clears it, sets it again and
-  joins with the prefilled code.
+  joins with the prefilled code. The live retest of the fix showed that
+  Back/Forward while _in_ a room (whose own hash is the same `#/room/…` URL)
+  fed the room's code back into `pendingCode`, so "Leave" afterwards landed on
+  Home with the just-left room offered as an invite; the listener is now only
+  attached while on Home, and Back/Forward during a game leaves it untouched.
 
 ### Coverage notes
 
