@@ -26,6 +26,14 @@ export function Home({
 }: Props) {
   const [codeInput, setCodeInput] = useState(pendingCode ?? '');
   const [codeError, setCodeError] = useState<string | null>(null);
+  const [seenCode, setSeenCode] = useState(pendingCode);
+  if (pendingCode !== seenCode) {
+    setSeenCode(pendingCode);
+    if (pendingCode) {
+      setCodeInput(pendingCode);
+      setCodeError(null);
+    }
+  }
   const nameId = useId();
   const codeId = useId();
   const code = normalizeRoomCode(codeInput);

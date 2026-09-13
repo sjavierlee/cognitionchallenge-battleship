@@ -118,6 +118,26 @@ describe('friend mode UI', () => {
     expect(cell('Enemy board', 'A1')).toBeEnabled();
   });
 
+  it('picks up an invite link pasted into an already-open Home tab', async () => {
+    const user = userEvent.setup();
+    const link = fakeLink('Ada');
+    render(<App linkFactory={link.factory} rng={seededRng(5)} />);
+
+    const codeInput = screen.getByRole('textbox', { name: /room code/i });
+    await user.click(screen.getByRole('button', { name: /join game/i }));
+    expect(screen.getByText(/codes are 6 letters or digits/i)).toBeInTheDocument();
+
+    // Same-document navigation to a share link fires hashchange, not a page load.
+    window.location.hash = '#/room/k7q2zd';
+    await waitFor(() => expect(codeInput).toHaveValue('K7Q2ZD'));
+    expect(screen.queryByText(/codes are 6 letters or digits/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/you opened an invite link/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /join game/i }));
+    expect(link.calls).toEqual([{ role: 'guest', code: 'K7Q2ZD' }]);
+    expect(window.location.hash).toBe('#/room/K7Q2ZD');
+  });
+
   it('reveals the winner fleet to the loser once the summary is closed, with rematch still on offer', async () => {
     const user = userEvent.setup();
     const link = fakeLink('Bob');
