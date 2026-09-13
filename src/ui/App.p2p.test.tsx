@@ -143,6 +143,20 @@ describe('friend mode UI', () => {
     await user.click(screen.getByRole('button', { name: /join game/i }));
     expect(link.calls).toEqual([{ role: 'guest', code: 'K7Q2ZD' }]);
     expect(window.location.hash).toBe('#/room/K7Q2ZD');
+
+    // Back/Forward through the live room's own hash leaves the game alone...
+    link.connect();
+    window.location.hash = '';
+    window.location.hash = '#/room/k7q2zd';
+    await waitFor(() => expect(window.location.hash).toBe('#/room/k7q2zd'));
+    expect(screen.getByText(/connected with ada/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /join game/i })).not.toBeInTheDocument();
+
+    // ...and does not resurrect the invite once the player heads home.
+    await user.click(screen.getByRole('button', { name: /^leave$/i }));
+    expect(window.location.hash).toBe('');
+    expect(screen.getByRole('textbox', { name: /room code/i })).toHaveValue('');
+    expect(screen.queryByText(/you opened an invite link/i)).not.toBeInTheDocument();
   });
 
   it('reveals the winner fleet to the loser once the summary is closed, with rematch still on offer', async () => {

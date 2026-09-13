@@ -180,12 +180,14 @@ export function App({
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  // An invite link pasted into an already-open tab only fires hashchange, not a page load.
+  // An invite link pasted into an already-open tab only fires hashchange, not a page load. Only
+  // Home follows the URL: Back/Forward through a live room's own hash must not disturb the game.
   useEffect(() => {
+    if (mode !== 'home') return;
     const onHashChange = () => setPendingCode(roomFromHash(window.location.hash));
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
+  }, [mode]);
 
   // The room code lives in the URL so the host can share it; clear it when leaving.
   const roomCode = friend ? net.code : null;
