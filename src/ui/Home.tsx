@@ -32,6 +32,8 @@ export function Home({
     if (pendingCode) {
       setCodeInput(pendingCode);
       setCodeError(null);
+    } else if (codeInput === seenCode) {
+      setCodeInput('');
     }
   }
   const nameId = useId();

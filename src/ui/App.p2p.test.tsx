@@ -133,6 +133,13 @@ describe('friend mode UI', () => {
     expect(screen.queryByText(/codes are 6 letters or digits/i)).not.toBeInTheDocument();
     expect(screen.getByText(/you opened an invite link/i)).toBeInTheDocument();
 
+    // Navigating back off the invite (e.g. Back button) drops it again.
+    window.location.hash = '';
+    await waitFor(() => expect(codeInput).toHaveValue(''));
+    expect(screen.queryByText(/you opened an invite link/i)).not.toBeInTheDocument();
+
+    window.location.hash = '#/room/k7q2zd';
+    await waitFor(() => expect(codeInput).toHaveValue('K7Q2ZD'));
     await user.click(screen.getByRole('button', { name: /join game/i }));
     expect(link.calls).toEqual([{ role: 'guest', code: 'K7Q2ZD' }]);
     expect(window.location.hash).toBe('#/room/K7Q2ZD');

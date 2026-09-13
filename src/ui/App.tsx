@@ -182,10 +182,7 @@ export function App({
 
   // An invite link pasted into an already-open tab only fires hashchange, not a page load.
   useEffect(() => {
-    const onHashChange = () => {
-      const code = roomFromHash(window.location.hash);
-      if (code) setPendingCode(code);
-    };
+    const onHashChange = () => setPendingCode(roomFromHash(window.location.hash));
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);

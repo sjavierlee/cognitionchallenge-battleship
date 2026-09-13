@@ -635,11 +635,12 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   from `window.location.hash` in the `pendingCode` initialiser. `Home` also
   seeded its input from `pendingCode` in a `useState` initialiser, so a later
   prop change would not have reached the field either.
-- **Fix:** `App` listens for `hashchange` and updates `pendingCode` when the
-  hash is a valid room link; `Home` adjusts its code input (and clears any
+- **Fix:** `App` listens for `hashchange` and mirrors the hash into
+  `pendingCode` (a room link sets it, anything else — e.g. pressing Back to
+  leave the invite — clears it); `Home` adjusts its code input (and clears any
   validation error) whenever `pendingCode` changes. Covered by an RTL test that
-  renders Home, sets `location.hash` to an invite, and joins with the prefilled
-  code.
+  renders Home, sets `location.hash` to an invite, clears it, sets it again and
+  joins with the prefilled code.
 
 ### Coverage notes
 
