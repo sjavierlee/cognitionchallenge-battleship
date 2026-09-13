@@ -622,6 +622,26 @@ three difficulties, a full Normal game to Defeat, persistence, 400px layout).
   positioned × in the dialog corner; `.gameover-kicker` now has horizontal
   padding equal to the close button's footprint so the text stays clear of it.
 
+### 41. An invite link pasted into an already-open tab was ignored — Fixed
+
+- **Description:** With the site already open on Home, pasting a friend's
+  invite URL into that tab's address bar changed the address but left the Room
+  code field empty; Join then complained "Codes are 6 letters or digits". Only
+  a reload picked the code up. Found by the recorded ship-readiness pass on the
+  public deployment.
+- **Root cause:** The invite lives in the URL hash (`/#/room/K7Q2ZD`). The
+  browser treats a hash-only change on the same document as in-page navigation:
+  it fires `hashchange` but does not reload, and the code was only read once
+  from `window.location.hash` in the `pendingCode` initialiser. `Home` also
+  seeded its input from `pendingCode` in a `useState` initialiser, so a later
+  prop change would not have reached the field either.
+- **Fix:** `App` listens for `hashchange` and mirrors the hash into
+  `pendingCode` (a room link sets it, anything else — e.g. pressing Back to
+  leave the invite — clears it); `Home` adjusts its code input (and clears any
+  validation error) whenever `pendingCode` changes. Covered by an RTL test that
+  renders Home, sets `location.hash` to an invite, clears it, sets it again and
+  joins with the prefilled code.
+
 ### Coverage notes
 
 - The first recorded run ended in Defeat, so the Victory overlay was only
